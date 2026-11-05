@@ -1,0 +1,125 @@
+{
+  "settings": {
+    "storeName": "Sekar",
+    "tagline": "Bunga pilihan untuk setiap cerita",
+    "address": "Jl. Benda Raya No. 24, Kemang, Jakarta Selatan, Indonesia 12560",
+    "phone": "081288802468",
+    "currency": "Rp",
+    "activeWhatsApp": true
+  },
+  "admin": {
+    "id": "admin_1",
+    "name": "Admin Sekar",
+    "email": "admin@sekarflorist.id",
+    "password": "admin123"
+  },
+  "categories": [
+    {
+      "id": "cat_1",
+      "name": "Buket bunga",
+      "slug": "buket-bunga",
+      "description": "Rangkaian bunga segar yang dibalut dengan penuh perhatian."
+    },
+    {
+      "id": "cat_2",
+      "name": "Flower box",
+      "slug": "flower-box",
+      "description": "Bunga pilihan dalam kotak yang cantik dan praktis."
+    },
+    {
+      "id": "cat_3",
+      "name": "Bunga meja",
+      "slug": "bunga-meja",
+      "description": "Rangkaian untuk menemani ruang dan momen istimewa."
+    },
+    {
+      "id": "cat_4",
+      "name": "Bunga kering",
+      "slug": "bunga-kering",
+      "description": "Keindahan bunga yang dapat dinikmati lebih lama."
+    },
+    {
+      "id": "cat_5",
+      "name": "Flower basket",
+      "slug": "flower-basket",
+      "description": "Rangkaian hangat dalam keranjang pilihan."
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_1",
+      "name": "Senandung Mawar",
+      "categoryId": "cat_1",
+      "price": 249000,
+      "stock": 12,
+      "badge": "Terlaris",
+      "description": "12 mawar pink, eucalyptus",
+      "image": "/images/pink-roses.jpg"
+    },
+    {
+      "id": "prod_2",
+      "name": "Sinar Pagi",
+      "categoryId": "cat_1",
+      "price": 189000,
+      "stock": 8,
+      "badge": "Favorit",
+      "description": "5 sunflower, aster putih",
+      "image": "/images/wildflowers.jpg"
+    },
+    {
+      "id": "prod_3",
+      "name": "Peluk dalam Bunga",
+      "categoryId": "cat_2",
+      "price": 349000,
+      "stock": 4,
+      "badge": "Hemat Rp50rb",
+      "description": "Mawar, lisianthus, box medium",
+      "image": "/images/flower-arrangement.jpg"
+    },
+    {
+      "id": "prod_4",
+      "name": "Tulip untukmu",
+      "categoryId": "cat_1",
+      "price": 329000,
+      "stock": 6,
+      "description": "10 tulip pink, wrapping premium",
+      "image": "/images/hero-bouquet.jpg"
+    },
+    {
+      "id": "prod_5",
+      "name": "Putih yang Tulus",
+      "categoryId": "cat_3",
+      "price": 299000,
+      "stock": 5,
+      "description": "Lily putih, vas kaca termasuk",
+      "image": "/images/wildflowers.jpg"
+    },
+    {
+      "id": "prod_6",
+      "name": "Rona Senja",
+      "categoryId": "cat_1",
+      "price": 279000,
+      "stock": 7,
+      "description": "Mawar peach, carnation, medium",
+      "image": "/images/pink-roses.jpg"
+    },
+    {
+      "id": "prod_7",
+      "name": "Abadi dalam Rasa",
+      "categoryId": "cat_4",
+      "price": 149000,
+      "stock": 0,
+      "description": "Pampas, bunny tail, tahan lama",
+      "image": "/images/dried-bouquet.jpg"
+    },
+    {
+      "id": "prod_8",
+      "name": "Taman Kecil",
+      "categoryId": "cat_5",
+      "price": 429000,
+      "stock": 0,
+      "description": "Mixed seasonal flowers, keranjang",
+      "image": "/images/flower-arrangement.jpg"
+    }
+  ]
+}
