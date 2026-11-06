@@ -30,7 +30,6 @@ import fotoBunga6 from './assets/admin/images/foto-bunga6.png';
 import fotoBunga7 from './assets/admin/images/foto-bunga7.png';
 import lambangBunga from './assets/admin/icons/lambang-bunga.svg';
 import { AdminDashboard } from './components/AdminDashboard';
-import { AdminLoginModal } from './components/AdminLoginModal';
 import { OrderModal } from './components/OrderModal';
 import { UserAuthPage } from './components/UserAuthPage';
 import {
@@ -223,9 +222,10 @@ export function Storefront() {
   const [sortOrder, setSortOrder] = useState('recommended');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const isAdminRoute = window.location.pathname.replace(/\/+$/, '') === '/admin';
   const [adminMode, setAdminMode] = useState('store');
   const [adminUser, setAdminUser] = useState(null);
-  const [userMode, setUserMode] = useState('store');
+  const [userMode, setUserMode] = useState('login');
   const [user, setUser] = useState(null);
   const [userNotice, setUserNotice] = useState('');
   const [orderItems, setOrderItems] = useState(null);
@@ -425,42 +425,35 @@ export function Storefront() {
     );
   }
 
-  async function openAdmin() {
-    try {
-      const profile = await fetchAdminProfile();
-      if (profile) {
-        setAdminUser(profile);
-        setAdminMode('dashboard');
-      } else {
-        setAdminMode('login');
-      }
-    } catch {
-      clearAuthToken();
-      setAdminMode('login');
-    }
-  }
+  useEffect(() => {
+    if (!isAdminRoute) return;
 
-  if (adminMode === 'login') {
-    return (
-      <AdminLoginModal
-        onBack={() => setAdminMode('store')}
-        onLogin={(user) => {
-          setAdminUser(user);
+    fetchAdminProfile()
+      .then((profile) => {
+        if (profile) {
+          setAdminUser(profile);
           setAdminMode('dashboard');
-        }}
-      />
-    );
+        }
+      })
+      .catch(() => clearAuthToken());
+  }, [isAdminRoute]);
+
+  function returnToStore() {
+    setAdminMode('store');
+    setUserMode('store');
+    if (isAdminRoute) window.history.replaceState(null, '', '/');
   }
 
   if (adminMode === 'dashboard') {
     return (
       <AdminDashboard
         user={adminUser}
-        onExit={() => setAdminMode('store')}
+        onExit={returnToStore}
         onLogout={() => {
           clearAuthToken();
           setAdminUser(null);
-          setAdminMode('login');
+          setAdminMode('store');
+          setUserMode('login');
         }}
         onCatalogChanged={loadCatalog}
       />
@@ -472,12 +465,18 @@ export function Storefront() {
       <UserAuthPage
         mode={userMode}
         user={user}
-        onBack={() => setUserMode('store')}
+        onBack={returnToStore}
         onModeChange={setUserMode}
-        onAuth={(signedInUser) => {
+        onLogin={({ role, user: signedInUser }) => {
+          if (role === 'admin') {
+            setAdminUser(signedInUser);
+            setAdminMode('dashboard');
+            return;
+          }
           setUser(signedInUser);
           setUserMode('store');
           setUserNotice('');
+          if (isAdminRoute) window.history.replaceState(null, '', '/');
         }}
         onLogout={() => {
           clearUserAuthToken();
@@ -939,9 +938,6 @@ export function Storefront() {
             <p>WhatsApp: {contactUrl ? settings.phone : 'Nomor belum diatur'}</p>
             <p>Senin–Minggu, 08.00–19.00 WIB</p>
             <p>Pengiriman Jakarta & sekitarnya</p>
-            <button type="button" className="store-footer__admin-link" onClick={openAdmin}>
-              Area admin
-            </button>
           </div>
           <div>
             <h3>Mampir ke studio</h3>

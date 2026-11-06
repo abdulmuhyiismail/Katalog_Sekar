@@ -57,6 +57,13 @@ router.post("/register", async (req, res) => {
       message: "Masukkan alamat email yang valid.",
     });
   }
+  const admin = db.getAdmin();
+  if (admin?.email.toLowerCase() === email) {
+    return res.status(409).json({
+      success: false,
+      message: "Email sudah digunakan. Silakan masuk dengan akun tersebut.",
+    });
+  }
   if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
     return res.status(400).json({
       success: false,
@@ -97,42 +104,56 @@ router.post("/register", async (req, res) => {
 });
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  const email =
+    typeof req.body?.email === "string"
+      ? req.body.email.trim().toLowerCase()
+      : "";
+  const password =
+    typeof req.body?.password === "string" ? req.body.password : "";
 
   if (!email || !password) {
     return res.status(400).json({
       success: false,
-      message: "Email and password are required",
+      message: "Email dan kata sandi wajib diisi.",
     });
   }
 
   const admin = db.getAdmin();
+  if (admin?.email.toLowerCase() === email) {
+    if (!(await bcrypt.compare(password, admin.password))) {
+      return res.status(401).json({
+        success: false,
+        message: "Email atau kata sandi tidak sesuai.",
+      });
+    }
 
-  if (!admin || email.trim().toLowerCase() !== admin.email.toLowerCase()) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid email or password",
+    return res.json({
+      success: true,
+      message: "Berhasil masuk.",
+      token: createToken(admin, "admin"),
+      role: "admin",
+      user: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+      },
     });
   }
 
-  const isMatch = await bcrypt.compare(password, admin.password);
-  if (!isMatch) {
+  const user = db.getUserForAuthentication(email);
+  if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({
       success: false,
-      message: "Invalid email or password",
+      message: "Email atau kata sandi tidak sesuai.",
     });
   }
 
-  const token = createToken(admin, "admin");
   return res.json({
     success: true,
-    message: "Login successful",
-    token,
-    user: {
-      id: admin.id,
-      email: admin.email,
-      name: admin.name,
-    },
+    message: "Berhasil masuk.",
+    token: createToken(user, "user"),
+    role: "user",
+    user: publicUser(user),
   });
 });
 

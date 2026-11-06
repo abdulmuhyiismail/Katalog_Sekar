@@ -52,8 +52,44 @@ export async function loginAdmin(email, password) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+  if (response.role && response.role !== 'admin') {
+    throw new Error('Akun ini tidak memiliki akses administrator.');
+  }
   localStorage.setItem(AUTH_TOKEN_KEY, response.token);
   return response.user;
+}
+
+export async function loginAccount(email, password) {
+  let response;
+  let role;
+
+  try {
+    response = await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    role = response.role ?? 'admin';
+  } catch (error) {
+    if (error.status !== 401) throw error;
+
+    response = await request('/auth/user/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    role = 'user';
+  }
+
+  if (role !== 'admin' && role !== 'user') {
+    throw new Error('Peran akun tidak dikenali. Silakan hubungi administrator.');
+  }
+
+  clearAuthToken();
+  clearUserAuthToken();
+  localStorage.setItem(
+    role === 'admin' ? AUTH_TOKEN_KEY : USER_AUTH_TOKEN_KEY,
+    response.token,
+  );
+  return { role, user: response.user };
 }
 
 export async function registerUser(name, email, password) {

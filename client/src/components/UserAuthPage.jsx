@@ -10,7 +10,11 @@ import {
   Mail,
   UserRound,
 } from 'lucide-react';
-import { loginUser, registerUser } from '../services/api';
+import {
+  clearUserAuthToken,
+  loginAccount,
+  registerUser,
+} from '../services/api';
 import lambangBunga from '../assets/admin/icons/lambang-bunga.svg';
 
 export function UserAuthPage({
@@ -18,7 +22,7 @@ export function UserAuthPage({
   user,
   onBack,
   onModeChange,
-  onAuth,
+  onLogin,
   onLogout,
 }) {
   const [name, setName] = useState('');
@@ -26,6 +30,7 @@ export function UserAuthPage({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event) {
@@ -34,11 +39,17 @@ export function UserAuthPage({
     setIsSubmitting(true);
 
     try {
-      const signedInUser =
-        mode === 'register'
-          ? await registerUser(name, email.trim(), password)
-          : await loginUser(email.trim(), password);
-      onAuth(signedInUser);
+      if (mode === 'register') {
+        await registerUser(name, email.trim(), password);
+        clearUserAuthToken();
+        setPassword('');
+        setName('');
+        setSuccess('Akun berhasil dibuat. Silakan masuk dengan akunmu.');
+        onModeChange('login');
+      } else {
+        const account = await loginAccount(email.trim(), password);
+        onLogin(account);
+      }
     } catch (authError) {
       setError(
         authError instanceof Error
@@ -157,6 +168,7 @@ export function UserAuthPage({
                 </span>
               </label>
               {error && <p className="user-auth__error" role="alert">{error}</p>}
+              {success && <p className="user-auth__success" role="status">{success}</p>}
               <button type="submit" className="user-auth__submit" disabled={isSubmitting}>
                 {isSubmitting
                   ? 'Mohon tunggu...'
@@ -173,6 +185,7 @@ export function UserAuthPage({
                 type="button"
                 onClick={() => {
                   setError('');
+                  setSuccess('');
                   onModeChange(isRegistering ? 'login' : 'register');
                 }}
               >

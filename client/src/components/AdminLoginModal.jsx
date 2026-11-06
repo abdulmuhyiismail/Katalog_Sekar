@@ -4,10 +4,8 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Flower2,
   LockKeyhole,
   Mail,
-  ShieldCheck,
 } from 'lucide-react';
 import { loginAdmin } from '../services/api';
 import lambangBunga from '../assets/admin/icons/lambang-bunga.svg';
@@ -48,19 +46,16 @@ export function AdminLoginModal({ onBack, onLogin }) {
           <img src={lambangBunga} alt="" width={20} height={29} />
           <span>sekar.</span>
         </a>
-        <span className="admin-login__badge"><ShieldCheck size={13} /> Khusus administrator Sekar</span>
       </header>
 
       <section className="admin-login__content">
         <div className="admin-login__card">
-          <div className="admin-login__mark"><Flower2 size={30} strokeWidth={1.4} /><i /></div>
-          <span className="admin-login__panel-label"><ShieldCheck size={12} /> Panel admin</span>
-          <h1>Selamat Datang Admin</h1>
-          <p className="admin-login__subtitle">Masuk untuk mengelola katalog bunga, harga, dan stok toko Sekar.</p>
+          <h1>Masuk ke Dashboard</h1>
+          <p className="admin-login__subtitle">Gunakan akun administrator untuk melanjutkan.</p>
 
           <form onSubmit={handleSubmit} className="admin-login__form">
             <label>
-              <span>Email Admin</span>
+              <span>Email</span>
               <span className="admin-login__input">
                 <Mail size={16} aria-hidden="true" />
                 <input
@@ -75,8 +70,7 @@ export function AdminLoginModal({ onBack, onLogin }) {
             </label>
             <label>
               <span className="admin-login__password-label">
-                Kata Sandi
-                <span className="admin-login__forgot">Pemulihan belum diaktifkan</span>
+                Kata sandi
               </span>
               <span className="admin-login__input">
                 <LockKeyhole size={16} aria-hidden="true" />
@@ -100,23 +94,18 @@ export function AdminLoginModal({ onBack, onLogin }) {
             </label>
             {error && <p className="admin-login__error" role="alert">{error}</p>}
             <button type="submit" className="admin-login__submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Memeriksa akun...' : 'Masuk ke Dashboard'}
+              {isSubmitting ? 'Memeriksa akun...' : 'Masuk'}
               <ArrowRight size={16} />
             </button>
           </form>
 
-          <div className="admin-login__demo">
-            <strong><ShieldCheck size={13} /> Akses demo</strong>
-            <span>admin@sekarflorist.id / admin123</span>
-          </div>
           <button type="button" className="admin-login__return" onClick={onBack}>
-            <ArrowLeft size={14} /> Kembali ke Katalog Bunga
+            <ArrowLeft size={14} /> Kembali ke toko
           </button>
         </div>
-        <p className="admin-login__security"><i /> Aman · SSL/TLS terenkripsi <span>|</span> <ShieldCheck size={13} /> Sesi terlindungi</p>
       </section>
 
-      <footer className="admin-login__footer">© 2026 Sekar Florist. Hak cipta dilindungi. Dirangkai dengan hati.</footer>
+      <footer className="admin-login__footer">© 2026 Sekar Florist</footer>
     </main>
   );
 }

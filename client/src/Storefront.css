@@ -925,20 +925,6 @@ select:focus-visible {
   font-weight: 600;
   margin-top: 10px;
 }
-.store-footer__admin-link {
-  padding: 0;
-  border: 0;
-  color: #c6d1c7;
-  background: transparent;
-  font-size: 14.3px;
-  font-weight: 700;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.store-footer__admin-link:hover {
-  color: #fff;
-}
-
 /* Responsive */
 @media (max-width: 1050px) {
   .store-header__inner {
@@ -2233,17 +2219,6 @@ select:focus-visible {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: 27px;
 }
-.admin-login__badge {
-  justify-self: end;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 999px;
-  color: #7b847a;
-  background: #f2f4ef;
-  font-size: 8px;
-}
 .admin-login__content {
   display: grid;
   flex: 1;
@@ -2261,41 +2236,8 @@ select:focus-visible {
   box-shadow: 0 18px 50px rgba(34, 55, 43, 0.1);
   text-align: center;
 }
-.admin-login__mark {
-  position: relative;
-  display: grid;
-  width: 54px;
-  height: 54px;
-  place-items: center;
-  margin: 0 auto 10px;
-  border-radius: 15px;
-  color: #173c30;
-  background: #f2f0e7;
-}
-.admin-login__mark i {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 11px;
-  height: 11px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  background: #529168;
-}
-.admin-login__panel-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: #173c30;
-  background: #edf2e8;
-  font-size: 8px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
 .admin-login__card > h1 {
-  margin: 14px 0 7px;
+  margin: 0 0 7px;
   color: #173c30;
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: 26px;
@@ -2356,11 +2298,6 @@ select:focus-visible {
   background: transparent;
   cursor: pointer;
 }
-.admin-login__forgot {
-  color: #7b847a;
-  font-size: 9px;
-  font-weight: 400;
-}
 .admin-login__error {
   margin: 0;
   color: #a23c34;
@@ -2388,23 +2325,6 @@ select:focus-visible {
   opacity: 0.7;
   cursor: wait;
 }
-.admin-login__demo {
-  display: grid;
-  gap: 5px;
-  margin-top: 13px;
-  padding: 10px;
-  border-radius: 7px;
-  color: #7b847a;
-  background: #f2f4ef;
-  font-size: 8px;
-}
-.admin-login__demo strong {
-  display: inline-flex;
-  justify-content: center;
-  gap: 5px;
-  color: #526357;
-  font-size: 9px;
-}
 .admin-login__return {
   justify-content: center;
   width: 100%;
@@ -2412,19 +2332,6 @@ select:focus-visible {
   padding-top: 14px;
   border-top: 1px solid #e6e8df;
   font-size: 9px;
-}
-.admin-login__security {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #858980;
-  font-size: 9px;
-}
-.admin-login__security i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #529168;
 }
 .admin-login__footer {
   padding: 18px;
@@ -2568,9 +2475,6 @@ select:focus-visible {
   }
   .admin-login__topbar .admin-login__brand {
     justify-self: end;
-  }
-  .admin-login__badge {
-    display: none;
   }
   .admin-login__card {
     padding: 25px 20px 18px;
@@ -3328,9 +3232,6 @@ select:focus-visible {
   font-size: 13px;
 }
 
-.admin-login__badge,
-.admin-login__panel-label,
-.admin-login__security,
 .admin-login__return,
 .admin-login__error {
   font-size: 12px;
@@ -3342,13 +3243,6 @@ select:focus-visible {
   font-size: 14px;
 }
 
-.admin-login__forgot {
-  font-size: 11px;
-}
-
-.admin-login__demo {
-  font-size: 11px;
-}
 
 @media (max-width: 600px) {
   .admin-product-delete-modal__header,
@@ -4240,6 +4134,12 @@ select:focus-visible {
   font-size: 14px;
   line-height: 1.5;
 }
+.user-auth__success {
+  margin: 0;
+  color: #28634e;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .user-auth__submit {
   display: flex;
   min-height: 50px;
@@ -4712,16 +4612,11 @@ select:focus-visible {
 .admin-login .admin-login__topbar,
 .admin-login .admin-login__form label > span:first-child,
 .admin-login .admin-login__password-label { font-size: 14px; }
-.admin-login .admin-login__badge,
-.admin-login .admin-login__panel-label,
-.admin-login .admin-login__security,
 .admin-login .admin-login__return,
-.admin-login .admin-login__error,
-.admin-login .admin-login__forgot { font-size: 13px; }
+.admin-login .admin-login__error { font-size: 13px; }
 .admin-login .admin-login__subtitle,
 .admin-login .admin-login__input input,
 .admin-login .admin-login__submit { font-size: 15px; }
-.admin-login .admin-login__demo { font-size: 13px; }
 .admin-shell .admin-product-delete-modal__header h2 {
   font-size: 26px;
 }
@@ -5010,12 +4905,8 @@ select:focus-visible {
   font-size: 14px;
 }
 
-.admin-login .admin-login__badge,
-.admin-login .admin-login__panel-label,
-.admin-login .admin-login__security,
 .admin-login .admin-login__return,
-.admin-login .admin-login__error,
-.admin-login .admin-login__forgot {
+.admin-login .admin-login__error {
   font-size: 13px;
 }
 
@@ -5023,10 +4914,6 @@ select:focus-visible {
 .admin-login .admin-login__input input,
 .admin-login .admin-login__submit {
   font-size: 15px;
-}
-
-.admin-login .admin-login__demo {
-  font-size: 13px;
 }
 
 .admin-shell .admin-product-delete-modal {
@@ -5383,12 +5270,8 @@ select:focus-visible {
   font-size: 14px;
 }
 
-.admin-login__badge,
-.admin-login__panel-label,
-.admin-login__security,
 .admin-login__return,
-.admin-login__error,
-.admin-login__forgot {
+.admin-login__error {
   font-size: 13px;
 }
 
@@ -5396,10 +5279,6 @@ select:focus-visible {
 .admin-login__input input,
 .admin-login__submit {
   font-size: 15px;
-}
-
-.admin-login__demo {
-  font-size: 13px;
 }
 
 .admin-product-delete-modal {
@@ -5742,9 +5621,6 @@ select:focus-visible {
   font-size: 13px;
 }
 
-.admin-login__badge,
-.admin-login__panel-label,
-.admin-login__security,
 .admin-login__return,
 .admin-login__error {
   font-size: 12px;
@@ -5754,14 +5630,6 @@ select:focus-visible {
 .admin-login__input input,
 .admin-login__submit {
   font-size: 14px;
-}
-
-.admin-login__forgot {
-  font-size: 11px;
-}
-
-.admin-login__demo {
-  font-size: 11px;
 }
 
 .admin-product-delete-modal {
