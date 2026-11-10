@@ -24,8 +24,10 @@ class SqliteDatabase {
   }
 
   initTables() {
-    // Enable foreign keys
+    // Enable foreign keys and WAL concurrency mode
     this.db.exec("PRAGMA foreign_keys = ON;");
+    this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db.exec("PRAGMA busy_timeout = 5000;");
 
     // 1. Categories Table
     this.db.exec(`

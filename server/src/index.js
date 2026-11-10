@@ -75,6 +75,16 @@ app.get("/", (req, res) => {
 
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
+  if (error?.name === "MulterError") {
+    const message =
+      error.code === "LIMIT_FILE_SIZE"
+        ? "Ukuran gambar maksimal 5MB."
+        : "Gagal mengunggah gambar.";
+    return res.status(400).json({
+      success: false,
+      message,
+    });
+  }
   const status = error.status || error.statusCode || 500;
   res.status(status).json({
     success: false,
