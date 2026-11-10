@@ -1,3 +1,4 @@
+import "../config/env.js";
 import { DatabaseSync } from "node:sqlite";
 import path from "path";
 import fs from "fs";
@@ -12,6 +13,8 @@ const SQLITE_FILE = process.env.SQLITE_FILE
   ? path.resolve(process.env.SQLITE_FILE)
   : path.join(__dirname, "katalogwa.sqlite");
 const DATA_FILE = path.join(__dirname, "data.json");
+
+fs.mkdirSync(path.dirname(SQLITE_FILE), { recursive: true });
 
 class SqliteDatabase {
   constructor() {
@@ -130,6 +133,7 @@ class SqliteDatabase {
 
   seedInitialData() {
     const seedData = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    const seedDemoData = process.env.SEED_DEMO_DATA === "true";
 
     // Seed Settings
     const existingSettings = this.db
@@ -149,15 +153,34 @@ class SqliteDatabase {
       .prepare("SELECT COUNT(*) AS count FROM admins")
       .get();
     if (existingAdmin.count === 0) {
-      const hashedPassword = bcrypt.hashSync(seedData.admin.password, 10);
+      const email = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+      const password = process.env.INITIAL_ADMIN_PASSWORD;
+      if (
+        !email ||
+        email === "admin@example.com" ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        !password ||
+        password.startsWith("replace-")
+      ) {
+        throw new Error(
+          "Set a valid INITIAL_ADMIN_EMAIL and a unique INITIAL_ADMIN_PASSWORD before starting with a new database.",
+        );
+      }
+      if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+        throw new Error(
+          "INITIAL_ADMIN_PASSWORD must be at least 8 characters and no more than 72 bytes.",
+        );
+      }
+      const name = process.env.INITIAL_ADMIN_NAME?.trim() || "Admin Sekar";
+      const hashedPassword = bcrypt.hashSync(password, 10);
       this.db
         .prepare(
           "INSERT INTO admins (id, name, email, password) VALUES (?, ?, ?, ?)",
         )
         .run(
-          seedData.admin.id,
-          seedData.admin.name,
-          seedData.admin.email,
+          randomUUID(),
+          name,
+          email,
           hashedPassword,
         );
     }
@@ -166,7 +189,7 @@ class SqliteDatabase {
     const existingCategories = this.db
       .prepare("SELECT COUNT(*) AS count FROM categories")
       .get();
-    if (existingCategories.count === 0) {
+    if (seedDemoData && existingCategories.count === 0) {
       const insertCat = this.db.prepare(
         "INSERT INTO categories (id, name, slug, description) VALUES (?, ?, ?, ?)",
       );
@@ -184,13 +207,13 @@ class SqliteDatabase {
     const existingProducts = this.db
       .prepare("SELECT COUNT(*) AS count FROM products")
       .get();
-    if (existingProducts.count === 0) {
+    if (seedDemoData && existingProducts.count === 0) {
       const insertProduct = this.db.prepare(`
         INSERT INTO products (id, name, category_id, price, stock, badge, stock_status, description, image)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      for (const product of seedData.products) {
+      for (const product of seedDemoData ? seedData.products : []) {
         const stock = Number(product.stock) || 0;
         const stockStatus = stock > 0 ? "Tersedia" : "Habis";
         insertProduct.run(

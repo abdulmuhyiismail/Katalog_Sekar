@@ -2,16 +2,10 @@
   "settings": {
     "storeName": "Sekar",
     "tagline": "Bunga pilihan untuk setiap cerita",
-    "address": "Jl. Benda Raya No. 24, Kemang, Jakarta Selatan, Indonesia 12560",
-    "phone": "085921103268",
+    "address": "",
+    "phone": "",
     "currency": "Rp",
-    "activeWhatsApp": true
-  },
-  "admin": {
-    "id": "admin_1",
-    "name": "Admin Sekar",
-    "email": "admin@sekarflorist.id",
-    "password": "admin123"
+    "activeWhatsApp": false
   },
   "categories": [
     {
