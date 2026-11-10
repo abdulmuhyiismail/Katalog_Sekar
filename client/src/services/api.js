@@ -47,6 +47,14 @@ export function fetchStoreSettings() {
   return request('/store');
 }
 
+export function saveStoreSettings(settings) {
+  return request('/store', {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(settings),
+  });
+}
+
 export async function loginAdmin(email, password) {
   const response = await request('/auth/login', {
     method: 'POST',
@@ -128,6 +136,24 @@ export async function fetchUserProfile() {
   }
 }
 
+export async function createOrder(order) {
+  const token = getUserAuthToken();
+  if (!token) throw new Error('Silakan masuk untuk menyimpan pesanan di akun.');
+  return request('/orders', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(order),
+  });
+}
+
+export async function fetchMyOrders() {
+  const token = getUserAuthToken();
+  if (!token) throw new Error('Silakan masuk untuk melihat riwayat pesanan.');
+  return request('/orders/mine', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export function clearUserAuthToken() {
   localStorage.removeItem(USER_AUTH_TOKEN_KEY);
 }
@@ -144,6 +170,37 @@ export async function fetchAdminProfile() {
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.data;
+}
+
+export function fetchAdmins() {
+  return request('/auth/admins', { headers: authHeaders() });
+}
+
+export function fetchOrders() {
+  return request('/orders', { headers: authHeaders() });
+}
+
+export function updateOrderStatus(id, status) {
+  return request(`/orders/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function saveAdmin(admin, id) {
+  return request(id ? `/auth/admins/${encodeURIComponent(id)}` : '/auth/admins', {
+    method: id ? 'PUT' : 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(admin),
+  });
+}
+
+export function deleteAdmin(id) {
+  return request(`/auth/admins/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
 }
 
 function authHeaders() {

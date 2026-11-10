@@ -8,6 +8,7 @@ import authRoutes from "./routes/auth.js";
 import categoryRoutes from "./routes/categories.js";
 import productRoutes from "./routes/products.js";
 import storeRoutes from "./routes/store.js";
+import orderRoutes from "./routes/orders.js";
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/store", storeRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
@@ -49,9 +51,21 @@ app.get("/", (req, res) => {
     message: "Welcome to Sekar API Server",
     endpoints: {
       auth: "/api/auth/login",
+      admins: {
+        list: "GET /api/auth/admins",
+        create: "POST /api/auth/admins",
+        update: "PUT /api/auth/admins/:id",
+        remove: "DELETE /api/auth/admins/:id",
+      },
       categories: "/api/categories",
       products: "/api/products",
       store: "/api/store",
+      orders: {
+        create: "POST /api/orders (user)",
+        mine: "GET /api/orders/mine (user)",
+        list: "GET /api/orders (admin)",
+        updateStatus: "PATCH /api/orders/:id/status (admin)",
+      },
       health: "/api/health",
     },
   });

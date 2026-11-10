@@ -11,7 +11,9 @@ import {
   MapPin,
   MessageCircle,
   Minus,
+  PackageCheck,
   Plus,
+  RefreshCw,
   Search,
   ShoppingBag,
   Sparkles,
@@ -37,6 +39,7 @@ import {
   clearUserAuthToken,
   fetchCategories,
   fetchAdminProfile,
+  fetchMyOrders,
   fetchProducts,
   fetchStoreSettings,
   fetchUserProfile,
@@ -45,6 +48,31 @@ import {
 import './Storefront.css';
 
 const heroImage = '/images/sekar-signature-bouquet.png';
+const USER_CART_STORAGE_PREFIX = 'sekar_user_cart_';
+
+function getUserCartStorageKey(userId) {
+  return `${USER_CART_STORAGE_PREFIX}${encodeURIComponent(userId)}`;
+}
+
+function readUserCart(userId) {
+  const savedCart = localStorage.getItem(getUserCartStorageKey(userId));
+  if (!savedCart) return [];
+
+  try {
+    const parsedCart = JSON.parse(savedCart);
+    if (!Array.isArray(parsedCart)) throw new Error('Format keranjang tidak valid.');
+    return parsedCart.filter((item) =>
+      item &&
+      item.product &&
+      typeof item.product.id === 'string' &&
+      Number.isInteger(item.quantity) &&
+      item.quantity > 0,
+    );
+  } catch {
+    localStorage.removeItem(getUserCartStorageKey(userId));
+    return [];
+  }
+}
 
 const seededProductImages = {
   'Senandung Mawar': fotoBunga0,
@@ -152,7 +180,7 @@ function isAvailable(product) {
   return true;
 }
 
-function ProductCard({ product, index, onAdd, onView, stagger }) {
+function ProductCard({ product, index, onAdd, onView, stagger, canOrder }) {
   const available = isAvailable(product);
   return (
     <article className={`store-product ${stagger || ''}`}>
@@ -178,14 +206,134 @@ function ProductCard({ product, index, onAdd, onView, stagger }) {
         <button
           className="store-button store-button--product"
           type="button"
-          disabled={!available}
+          disabled={!available || !canOrder}
           onClick={() => onAdd(product)}
         >
           {available ? <ShoppingBag size={14} /> : null}
-          {available ? 'Tambah ke keranjang' : 'Stok habis'}
+          {!available
+            ? 'Stok habis'
+            : canOrder
+              ? 'Tambah ke keranjang'
+              : 'Masuk untuk memesan'}
         </button>
       </div>
     </article>
+  );
+}
+
+function HomeOrderStatus({ user, onOpenAccount }) {
+  const [orders, setOrders] = useState(null);
+  const [loadedUserId, setLoadedUserId] = useState(null);
+  const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const userId = user?.id;
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    let active = true;
+
+    fetchMyOrders()
+      .then((response) => {
+        if (active) {
+          setOrders(response.data);
+          setLoadedUserId(userId);
+          setError('');
+        }
+      })
+      .catch((loadError) => {
+        if (active) {
+          setLoadedUserId(userId);
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Status pesanan belum dapat dimuat.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setRefreshing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [userId, refreshKey]);
+
+  const hasCurrentUserData = loadedUserId === userId;
+  const currentOrders = hasCurrentUserData ? orders : null;
+  const currentError = hasCurrentUserData ? error : '';
+  const latestOrders = currentOrders?.slice(0, 3) || [];
+
+  return (
+    <section className="store-container store-order-status" aria-labelledby="store-order-status-title">
+      <div className="store-order-status__heading">
+        <div>
+          <p className="store-eyebrow"><PackageCheck size={15} /> Status pesanan</p>
+          <h2 id="store-order-status-title">Pantau pesananmu.</h2>
+        </div>
+        {user && (
+          <div className="store-order-status__actions">
+            <button
+              type="button"
+              onClick={() => {
+                setRefreshing(true);
+                setRefreshKey((current) => current + 1);
+              }}
+              disabled={refreshing}
+            >
+              <RefreshCw size={15} /> Muat ulang
+            </button>
+            <button type="button" onClick={onOpenAccount}>
+              Lihat semua pesanan
+            </button>
+          </div>
+        )}
+      </div>
+      {!user ? (
+        <p className="store-order-status__message">
+          Masuk ke akun untuk melihat perkembangan pesanan.
+          <button type="button" onClick={onOpenAccount}>Masuk akun</button>
+        </p>
+      ) : currentError ? (
+        <p className="store-order-status__message store-order-status__message--error" role="alert">
+          {currentError}
+          <button
+            type="button"
+            onClick={() => {
+              setRefreshing(true);
+              setRefreshKey((current) => current + 1);
+            }}
+          >
+            Coba lagi
+          </button>
+        </p>
+      ) : currentOrders === null ? (
+        <p className="store-order-status__message" role="status">Memuat status pesanan...</p>
+      ) : latestOrders.length ? (
+        <div className="store-order-status__list">
+          {latestOrders.map((order) => (
+            <article className="store-order-status__item" key={order.id}>
+              <div>
+                <strong>Pesanan #{order.id.slice(0, 8).toUpperCase()}</strong>
+                <span>{formatPrice(order.subtotal)}</span>
+              </div>
+              <span className={`user-order-status user-order-status--${order.status}`}>
+                {order.status === 'confirmed'
+                  ? 'Dikonfirmasi'
+                  : order.status === 'rejected'
+                    ? 'Ditolak'
+                    : 'Menunggu konfirmasi'}
+              </span>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="store-order-status__message">
+          Belum ada pesanan. Pesanan yang dibuat akan tampil di sini.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -225,7 +373,7 @@ export function Storefront() {
   const isAdminRoute = window.location.pathname.replace(/\/+$/, '') === '/admin';
   const [adminMode, setAdminMode] = useState('store');
   const [adminUser, setAdminUser] = useState(null);
-  const [userMode, setUserMode] = useState('login');
+  const [userMode, setUserMode] = useState(isAdminRoute ? 'login' : 'store');
   const [user, setUser] = useState(null);
   const [userNotice, setUserNotice] = useState('');
   const [orderItems, setOrderItems] = useState(null);
@@ -237,6 +385,12 @@ export function Storefront() {
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [detailNote, setDetailNote] = useState('');
   const [cartNotice, setCartNotice] = useState('');
+
+  useEffect(() => {
+    if (user?.id) {
+      localStorage.setItem(getUserCartStorageKey(user.id), JSON.stringify(cart));
+    }
+  }, [cart, user?.id]);
 
   const loadCatalog = async () => {
     setIsLoading(true);
@@ -301,7 +455,10 @@ export function Storefront() {
 
     fetchUserProfile()
       .then((profile) => {
-        if (active) setUser(profile);
+        if (active && profile) {
+          setCart(readUserCart(profile.id));
+          setUser(profile);
+        }
       })
       .catch((error) => {
         if (active) {
@@ -351,9 +508,12 @@ export function Storefront() {
     ? Math.min(...products.map((product) => Number(product.price) || 0))
     : null;
   const storeName = settings?.storeName || 'Sekar';
+  useEffect(() => {
+    document.title = `${storeName} — Bunga untuk Setiap Rasa`;
+  }, [storeName]);
   const contactUrl = getWhatsAppUrl(
     settings,
-    'Halo Sekar, saya ingin berkonsultasi tentang rangkaian bunga.',
+    `Halo ${storeName}, saya ingin berkonsultasi tentang rangkaian bunga.`,
   );
   const mapUrl = settings?.address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(settings.address)}`
@@ -377,7 +537,20 @@ export function Storefront() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function submitSearch(event) {
+    event.preventDefault();
+    setPage('catalog');
+    window.setTimeout(() => {
+      document.getElementById('katalog')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
+  }
+
   function addToCart(product, quantity = 1, note = '') {
+    if (!user) return;
+
     const stockLimit = Number(product.stock);
     setCart((current) => {
       const existing = current.find((item) => item.product.id === product.id);
@@ -416,6 +589,8 @@ export function Storefront() {
   }
 
   function openOrder(items, note = '') {
+    if (!user) return;
+
     setOrderItems(items);
     setOrderNote(
       [note, ...items.map((item) => item.note)]
@@ -444,10 +619,29 @@ export function Storefront() {
     if (isAdminRoute) window.history.replaceState(null, '', '/');
   }
 
+  function logoutUser() {
+    if (user?.id) {
+      localStorage.setItem(getUserCartStorageKey(user.id), JSON.stringify(cart));
+    }
+    clearUserAuthToken();
+    setUser(null);
+    setUserMode('store');
+    setOrderItems(null);
+    setOrderNote('');
+    setCart([]);
+    setCartNote('');
+    setCartNotice('');
+    setPage('catalog');
+    setSelectedProduct(null);
+    setUserNotice('Kamu sudah keluar dari akun. Keranjang disimpan untuk akunmu dan tidak ditampilkan saat logout.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   if (adminMode === 'dashboard') {
     return (
       <AdminDashboard
         user={adminUser}
+        settings={settings}
         onExit={returnToStore}
         onLogout={() => {
           clearAuthToken();
@@ -456,6 +650,7 @@ export function Storefront() {
           setUserMode('login');
         }}
         onCatalogChanged={loadCatalog}
+        onStoreSettingsChanged={setSettings}
       />
     );
   }
@@ -465,6 +660,7 @@ export function Storefront() {
       <UserAuthPage
         mode={userMode}
         user={user}
+        settings={settings}
         onBack={returnToStore}
         onModeChange={setUserMode}
         onLogin={({ role, user: signedInUser }) => {
@@ -473,17 +669,13 @@ export function Storefront() {
             setAdminMode('dashboard');
             return;
           }
+          setCart(readUserCart(signedInUser.id));
           setUser(signedInUser);
           setUserMode('store');
           setUserNotice('');
           if (isAdminRoute) window.history.replaceState(null, '', '/');
         }}
-        onLogout={() => {
-          clearUserAuthToken();
-          setUser(null);
-          setUserMode('store');
-          setUserNotice('Kamu sudah keluar dari akun.');
-        }}
+        onLogout={logoutUser}
       />
     );
   }
@@ -492,9 +684,15 @@ export function Storefront() {
     <div className="storefront">
       <div className="store-announcement">
         <p>
-          Sedikit bunga, banyak bahagia. Gratis ongkir hingga Rp20.000 untuk
-          pesanan pertama.
-          <span>Kode: MAREKPERTAMA</span>
+          {user ? (
+            <>
+              Sedikit bunga, banyak bahagia. Gratis ongkir hingga Rp20.000 untuk
+              pesanan pertama.
+              <span>Kode: MAREKPERTAMA</span>
+            </>
+          ) : (
+            <>Mode lihat saja — masuk akun untuk melakukan pemesanan.</>
+          )}
         </p>
       </div>
 
@@ -510,8 +708,10 @@ export function Storefront() {
             <a href="#tentang" onClick={() => setPage('catalog')}>Tentang {storeName}</a>
           </nav>
           <div className="store-header__actions">
-            <label className="store-search">
-              <Search size={16} aria-hidden="true" />
+            <form className="store-search" role="search" onSubmit={submitSearch}>
+              <button type="submit" aria-label="Cari produk">
+                <Search size={16} aria-hidden="true" />
+              </button>
               <input
                 type="search"
                 value={search}
@@ -519,19 +719,21 @@ export function Storefront() {
                 placeholder="Cari bunga untuk siapa hari ini?"
                 aria-label="Cari bunga"
               />
-            </label>
-            <button
-              className="store-header__catalog-link"
-              type="button"
-              onClick={() => {
-                setPage('cart');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              aria-label={`Buka keranjang, ${cartCount} produk`}
-            >
-              <ShoppingBag size={18} />
-              <span className="store-header__cart-count">{cartCount}</span>
-            </button>
+            </form>
+            {user && (
+              <button
+                className="store-header__catalog-link"
+                type="button"
+                onClick={() => {
+                  setPage('cart');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                aria-label={`Buka keranjang, ${cartCount} produk`}
+              >
+                <ShoppingBag size={18} />
+                <span className="store-header__cart-count">{cartCount}</span>
+              </button>
+            )}
             <button
               className="store-header__account"
               type="button"
@@ -554,8 +756,7 @@ export function Storefront() {
             <p className="store-eyebrow stagger-1"><Sparkles size={16} /> Dirangkai dengan hati</p>
             <h1 className="stagger-2">Ada bunga untuk setiap rasa.</h1>
             <p className="store-hero__description stagger-3">
-              Dari ucapan sederhana hingga momen istimewa, kirimkan rasa lewat
-              bunga segar yang dirangkai khusus untukmu.
+              {settings?.tagline || 'Dari ucapan sederhana hingga momen istimewa, kirimkan rasa lewat bunga segar yang dirangkai khusus untukmu.'}
             </p>
             <div className="store-hero__actions stagger-4">
               <a className="store-button" href="#katalog">
@@ -568,7 +769,7 @@ export function Storefront() {
             </div>
           </div>
           <div className="store-hero__visual animate-float">
-            <img src={heroImage} alt="Rangkaian buket bunga segar Sekar" />
+            <img src={heroImage} alt={`Rangkaian buket bunga segar ${storeName}`} />
             <div className="store-hero__caption">
               <span>The signature collection</span>
               <strong>Seindah niat baikmu.</strong>
@@ -576,70 +777,12 @@ export function Storefront() {
           </div>
         </section>
 
-        <section className="store-container store-benefits" aria-label="Keunggulan Sekar">
-          <div className="store-benefit animate-enter">
-            <Flower2 size={21} />
-            <div><strong>Segar, setiap hari</strong><span>Bunga pilihan dari petani lokal</span></div>
-          </div>
-          <div className="store-benefit animate-enter stagger-1">
-            <Truck size={21} />
-            <div><strong>Kirim di hari yang sama</strong><span>Untuk area Jakarta & sekitarnya</span></div>
-          </div>
-          <div className="store-benefit animate-enter stagger-2">
-            <Gift size={21} />
-            <div><strong>Personal di setiap detail</strong><span>Gratis kartu ucapan untukmu</span></div>
-          </div>
-          <div className="store-benefit animate-enter stagger-3">
-            <MessageCircle size={21} />
-            <div><strong>Pesan tanpa ribet</strong><span>Langsung lewat WhatsApp</span></div>
-          </div>
-        </section>
-
-        <section className="store-container store-story-grid">
-          <article className="store-story-card" id="cara-pesan">
-            <p className="store-eyebrow"><MessageCircle size={14} /> Cara pesan</p>
-            <h2>Pesan bunga dengan mudah.</h2>
-            <p>Pilih rangkaian, isi catatan, lalu pesan melalui WhatsApp. Kami akan membantu memastikan pilihanmu sesuai.</p>
-            <ol>
-              <li><span>1</span> Pilih bunga dan isi kartu ucapan</li>
-              <li><span>2</span> Kirim detail melalui WhatsApp</li>
-              <li><span>3</span> Kami konfirmasi pesanan dan jadwal</li>
-            </ol>
-          </article>
-          <article className="store-story-card" id="tentang">
-            <p className="store-eyebrow"><Flower2 size={14} /> Tentang Sekar</p>
-            <h2>Dirangkai dengan hati.</h2>
-            <p>Sekar hadir untuk menemani setiap cerita lewat bunga segar pilihan yang dirangkai dengan penuh perhatian.</p>
-            <p className="store-story-card__address">
-              <MapPin size={14} />
-              {settings?.address || 'Studio Sekar, Jakarta'}
-            </p>
-          </article>
-        </section>
-
-        <section className="store-container store-care" id="perawatan-bunga">
-          <div className="store-care__heading">
-            <p className="store-eyebrow"><Heart size={14} /> Perawatan bunga</p>
-            <h2>Agar buketmu tetap segar lebih lama.</h2>
-            <p>Potong ujung batang secara diagonal, letakkan dalam vas bersih berisi air, dan ganti airnya setiap hari. Jauhkan bunga dari sinar matahari langsung, sumber panas, dan buah matang.</p>
-          </div>
-          <div className="store-care__tips">
-            <div><Sprout size={18} /><strong>Rapikan batang</strong><span>Potong sedikit bagian bawah batang sebelum bunga dimasukkan ke vas.</span></div>
-            <div><Flower2 size={18} /><strong>Gunakan vas bersih</strong><span>Buang daun yang terendam agar air tetap bersih dan bunga lebih awet.</span></div>
-            <div><Heart size={18} /><strong>Pilih tempat sejuk</strong><span>Simpan rangkaian di tempat sejuk, jauh dari matahari dan buah-buahan.</span></div>
-          </div>
-        </section>
-
-        <section className="store-container store-catalog" id="katalog">
+        <section className="store-container store-catalog store-catalog--first" id="katalog">
           <div className="store-catalog__heading animate-enter">
             <div>
               <p className="store-eyebrow">Pilihan dari hati</p>
               <h2>Temukan rangkaian ceritamu.</h2>
             </div>
-            <p className="store-catalog__note">
-              Untuk merayakan, menguatkan, atau sekadar bilang: “aku ingat kamu.”
-              Pilih bunga yang mewakilimu.
-            </p>
           </div>
 
           <div className="store-catalog__filters animate-enter stagger-1">
@@ -702,11 +845,16 @@ export function Storefront() {
                       index={index}
                       onView={openProduct}
                       onAdd={(item) => addToCart(item)}
+                      canOrder={Boolean(user)}
                       stagger={stagger}
                     />
                   );
                 })}
               </div>
+              <p className="store-catalog__note store-catalog__note--below">
+                Untuk merayakan, menguatkan, atau sekadar bilang: “aku ingat kamu.”
+                Pilih bunga yang mewakilimu.
+              </p>
               <p className="store-catalog__footnote animate-enter stagger-4">
                 <Sprout size={14} />
                 Setiap bunga punya keunikannya. Jenis dan warna dapat menyesuaikan
@@ -732,19 +880,84 @@ export function Storefront() {
           )}
         </section>
 
+        <section className="store-container store-benefits" aria-label={`Keunggulan ${storeName}`}>
+          <div className="store-benefit animate-enter">
+            <Flower2 size={21} />
+            <div><strong>Segar, setiap hari</strong><span>Bunga pilihan dari petani lokal</span></div>
+          </div>
+          <div className="store-benefit animate-enter stagger-1">
+            <Truck size={21} />
+            <div><strong>Kirim di hari yang sama</strong><span>Untuk area Jakarta & sekitarnya</span></div>
+          </div>
+          <div className="store-benefit animate-enter stagger-2">
+            <Gift size={21} />
+            <div><strong>Personal di setiap detail</strong><span>Gratis kartu ucapan untukmu</span></div>
+          </div>
+          <div className="store-benefit animate-enter stagger-3">
+            <MessageCircle size={21} />
+            <div><strong>Pesan tanpa ribet</strong><span>Langsung lewat WhatsApp</span></div>
+          </div>
+        </section>
+
+        <HomeOrderStatus
+          user={user}
+          onOpenAccount={() => setUserMode(user ? 'account' : 'login')}
+        />
+
+        <section className="store-container store-story-grid">
+          <article className="store-story-card" id="cara-pesan">
+            <p className="store-eyebrow"><MessageCircle size={14} /> Cara pesan</p>
+            <h2>Pesan bunga dengan mudah.</h2>
+            <p>Pilih rangkaian, isi catatan, lalu pesan melalui WhatsApp. Kami akan membantu memastikan pilihanmu sesuai.</p>
+            <ol>
+              <li><span>1</span> Pilih bunga dan isi kartu ucapan</li>
+              <li><span>2</span> Kirim detail melalui WhatsApp</li>
+              <li><span>3</span> Kami konfirmasi pesanan dan jadwal</li>
+            </ol>
+          </article>
+          <article className="store-story-card" id="tentang">
+            <p className="store-eyebrow"><Flower2 size={14} /> Tentang {storeName}</p>
+            <h2>Dirangkai dengan hati.</h2>
+            <p>{storeName} hadir untuk menemani setiap cerita lewat bunga segar pilihan yang dirangkai dengan penuh perhatian.</p>
+            <p className="store-story-card__address">
+              <MapPin size={14} />
+              {settings?.address || `Studio ${storeName}, Jakarta`}
+            </p>
+          </article>
+        </section>
+
+        <section className="store-container store-care" id="perawatan-bunga">
+          <div className="store-care__heading">
+            <p className="store-eyebrow"><Heart size={14} /> Perawatan bunga</p>
+            <h2>Agar buketmu tetap segar lebih lama.</h2>
+            <p>Potong ujung batang secara diagonal, letakkan dalam vas bersih berisi air, dan ganti airnya setiap hari. Jauhkan bunga dari sinar matahari langsung, sumber panas, dan buah matang.</p>
+          </div>
+          <div className="store-care__tips">
+            <div><Sprout size={18} /><strong>Rapikan batang</strong><span>Potong sedikit bagian bawah batang sebelum bunga dimasukkan ke vas.</span></div>
+            <div><Flower2 size={18} /><strong>Gunakan vas bersih</strong><span>Buang daun yang terendam agar air tetap bersih dan bunga lebih awet.</span></div>
+            <div><Heart size={18} /><strong>Pilih tempat sejuk</strong><span>Simpan rangkaian di tempat sejuk, jauh dari matahari dan buah-buahan.</span></div>
+          </div>
+        </section>
+
         <section className="store-container store-help animate-enter" id="konsultasi">
           <div className="store-help__mark animate-float"><Flower2 size={34} strokeWidth={1.2} /></div>
           <div className="store-help__copy">
             <h2>Belum menemukan bunga yang pas?</h2>
             <p>Ceritakan momen dan tujuanmu. Florist kami siap merangkai sesuatu yang personal.</p>
           </div>
-          {contactUrl ? (
-            <a className="store-button" href={contactUrl} target="_blank" rel="noreferrer">
-              <MessageCircle size={16} /> Konsultasi via WhatsApp
-            </a>
+          {user ? (
+            contactUrl ? (
+              <a className="store-button" href={contactUrl} target="_blank" rel="noreferrer">
+                <MessageCircle size={16} /> Konsultasi via WhatsApp
+              </a>
+            ) : (
+              <span className="store-help__contact-unavailable">
+                WhatsApp toko belum diatur
+              </span>
+            )
           ) : (
             <span className="store-help__contact-unavailable">
-              WhatsApp toko belum diatur
+              Masuk akun untuk konsultasi dan pemesanan
             </span>
           )}
           <span className="store-help__hours">Setiap hari, 08.00–19.00 WIB · Gratis konsultasi</span>
@@ -778,40 +991,49 @@ export function Storefront() {
                   {selectedProduct.description || 'Rangkaian bunga pilihan, dirangkai dengan penuh perhatian untuk momen istimewamu.'}
                   {' '}Setiap rangkaian dibuat segar dan dapat disesuaikan dengan kebutuhanmu.
                 </p>
-                <div className="store-detail__quantity">
-                  <div><strong>Jumlah rangkaian</strong><small>{selectedProduct.stock} rangkaian tersedia</small></div>
-                  <QuantityControl
-                    quantity={detailQuantity}
-                    maximum={Math.max(Number(selectedProduct.stock) || 1, 1)}
-                    onChange={setDetailQuantity}
-                  />
-                </div>
-                <label className="store-detail__note">
-                  Pesan kartu ucapan <small>Opsional · Gratis</small>
-                  <textarea rows={3} maxLength={200} value={detailNote} onChange={(event) => setDetailNote(event.target.value)} placeholder="Tuliskan pesan yang ingin kamu sampaikan..." />
-                </label>
-                <button
-                  type="button"
-                  className="store-button store-detail__add"
-                  disabled={!isAvailable(selectedProduct)}
-                  onClick={() => addToCart(selectedProduct, detailQuantity, detailNote)}
-                >
-                  <ShoppingBag size={16} /> Tambah ke keranjang
-                </button>
-                <button
-                  type="button"
-                  className="store-button secondary store-detail__whatsapp"
-                  disabled={!isAvailable(selectedProduct)}
-                  onClick={() => openOrder([{ product: selectedProduct, quantity: detailQuantity }], detailNote)}
-                >
-                  <MessageCircle size={16} /> Pesan via WhatsApp
-                </button>
+                {user ? (
+                  <>
+                    <div className="store-detail__quantity">
+                      <div><strong>Jumlah rangkaian</strong><small>{selectedProduct.stock} rangkaian tersedia</small></div>
+                      <QuantityControl
+                        quantity={detailQuantity}
+                        maximum={Math.max(Number(selectedProduct.stock) || 1, 1)}
+                        onChange={setDetailQuantity}
+                      />
+                    </div>
+                    <label className="store-detail__note">
+                      Pesan kartu ucapan <small>Opsional · Gratis</small>
+                      <textarea rows={3} maxLength={200} value={detailNote} onChange={(event) => setDetailNote(event.target.value)} placeholder="Tuliskan pesan yang ingin kamu sampaikan..." />
+                    </label>
+                    <button
+                      type="button"
+                      className="store-button store-detail__add"
+                      disabled={!isAvailable(selectedProduct)}
+                      onClick={() => addToCart(selectedProduct, detailQuantity, detailNote)}
+                    >
+                      <ShoppingBag size={16} /> Tambah ke keranjang
+                    </button>
+                    <button
+                      type="button"
+                      className="store-button secondary store-detail__whatsapp"
+                      disabled={!isAvailable(selectedProduct)}
+                      onClick={() => openOrder([{ product: selectedProduct, quantity: detailQuantity }], detailNote)}
+                    >
+                      <MessageCircle size={16} /> Pesan via WhatsApp
+                    </button>
+                  </>
+                ) : (
+                  <p className="store-detail__delivery">
+                    Mode lihat saja. Masuk melalui tombol akun untuk melakukan
+                    pemesanan.
+                  </p>
+                )}
                 <p className="store-detail__delivery"><Truck size={15} /> Dikantar atau diambil di studio. Jadwal dan ongkir dikonfirmasi melalui WhatsApp.</p>
               </div>
             </div>
             <div className="store-detail__features">
               <div><Flower2 size={18} /><h3>Dirangkai untukmu</h3><p>Bunga pilihan dirangkai menjadi buket yang personal.</p></div>
-              <div><MapPin size={18} /><h3>Mampir ke studio</h3><p>{settings?.address || 'Studio Sekar, Jakarta'}</p></div>
+              <div><MapPin size={18} /><h3>Mampir ke studio</h3><p>{settings?.address || `Studio ${storeName}, Jakarta`}</p></div>
               <div><Heart size={18} /><h3>Rawat rasa, rawat bunga</h3><p>Ikuti petunjuk perawatan yang disertakan pada setiap rangkaian.</p></div>
             </div>
             <section className="store-related">
@@ -827,6 +1049,7 @@ export function Storefront() {
                     index={index}
                     onView={openProduct}
                     onAdd={(item) => addToCart(item)}
+                    canOrder={Boolean(user)}
                   />
                 ))}
               </div>
@@ -834,12 +1057,12 @@ export function Storefront() {
             <section className="store-container store-help" id="konsultasi-detail">
               <div className="store-help__mark"><Flower2 size={30} /></div>
               <div className="store-help__copy"><h2>Belum menemukan bunga yang pas?</h2><p>Florist kami siap membantu memilih rangkaian yang personal.</p></div>
-              {contactUrl && <a className="store-button" href={contactUrl} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Konsultasi via WhatsApp</a>}
+              {contactUrl && user && <a className="store-button" href={contactUrl} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Konsultasi via WhatsApp</a>}
             </section>
           </section>
         )}
 
-        {page === 'cart' && (
+        {page === 'cart' && user && (
           <section className="store-container store-cart">
             <nav className="store-breadcrumbs" aria-label="Breadcrumb">
               <button type="button" onClick={() => setPage('catalog')}>Katalog bunga</button>
@@ -907,7 +1130,7 @@ export function Storefront() {
                   <textarea rows={3} value={cartNote} onChange={(event) => setCartNote(event.target.value)} placeholder="Tuliskan pesan kartu untuk tiap rangkaian, nama penerima, atau kebutuhan khususmu..." />
                   <span>Catatan dan pilihan bungamu akan disertakan saat melanjutkan pesanan via WhatsApp.</span>
                 </label>
-                <div className="store-cart__delivery"><div><Truck size={18} /><span><strong>Untuk Jakarta & sekitarnya</strong><small>Pengiriman di hari yang sama dapat dikonfirmasi sesuai jadwalmu melalui WhatsApp.</small></span></div><div><MapPin size={18} /><span><strong>Ingin mengambil sendiri?</strong><small>Mampir ke studio Sekar dan konfirmasi waktu pengambilan dengan florist.</small></span></div></div>
+                <div className="store-cart__delivery"><div><Truck size={18} /><span><strong>Untuk Jakarta & sekitarnya</strong><small>Pengiriman di hari yang sama dapat dikonfirmasi sesuai jadwalmu melalui WhatsApp.</small></span></div><div><MapPin size={18} /><span><strong>Ingin mengambil sendiri?</strong><small>Mampir ke studio {storeName} dan konfirmasi waktu pengambilan dengan florist.</small></span></div></div>
               </>
             )}
           </section>
@@ -921,7 +1144,7 @@ export function Storefront() {
               <img className="store-logo__mark" src={lambangBunga} alt="" width={20} height={29} />
               <span>{storeName.toLowerCase()}.</span>
             </a>
-            <p>Bunga segar, rasa yang tulus. Dirangkai dengan hati dan diantar untuk menghangatkan hari seseorang.</p>
+            <p>{settings?.tagline || 'Bunga segar, rasa yang tulus. Dirangkai dengan hati dan diantar untuk menghangatkan hari seseorang.'}</p>
             <a className="store-footer__social" href="#tentang">
               <ArrowUpRight size={15} /> @sekar.florist
             </a>
@@ -955,10 +1178,11 @@ export function Storefront() {
       </footer>
       {cartNotice && <div className="store-toast" role="status">{cartNotice}</div>}
       {userNotice && <div className="store-toast" role="status">{userNotice}</div>}
-      {orderItems && (
+      {user && orderItems && (
         <OrderModal
           items={orderItems}
           settings={settings}
+          user={user}
           initialNote={orderNote}
           onClose={() => setOrderItems(null)}
         />

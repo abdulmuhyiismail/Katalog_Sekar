@@ -6,6 +6,7 @@ import {
   MapPin,
   X,
 } from 'lucide-react';
+import { createOrder } from '../services/api';
 import fotoBunga0 from '../assets/admin/images/foto-bunga0.png';
 import fotoBunga1 from '../assets/admin/images/foto-bunga1.png';
 import fotoBunga2 from '../assets/admin/images/foto-bunga2.png';
@@ -43,18 +44,19 @@ function imageSource(product) {
   return seededProductImages[product.name] || image || '/images/hero-bouquet.jpg';
 }
 
-export function OrderModal({ items, product, settings, initialNote = '', onClose }) {
+export function OrderModal({ items, product, settings, user, initialNote = '', onClose }) {
   const orderItems = useMemo(
     () => items?.length ? items : product ? [{ product, quantity: 1 }] : [],
     [items, product],
   );
-  const [form, setForm] = useState({
-    name: '',
+  const [form, setForm] = useState(() => ({
+    name: user?.name || '',
     delivery: 'delivery',
     address: '',
     note: initialNote,
-  });
+  }));
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const subtotal = orderItems.reduce(
     (total, item) => total + Number(item.product.price) * item.quantity,
     0,
@@ -76,8 +78,11 @@ export function OrderModal({ items, product, settings, initialNote = '', onClose
 
   const message = useMemo(() => {
     const pickup = form.delivery === 'pickup';
+    const storeName = settings?.storeName || 'Sekar';
     return [
-      'Halo Sekar, saya ingin memesan:',
+      pickup
+        ? `Halo ${storeName}, saya ingin memesan untuk diambil di studio:`
+        : `Halo ${storeName}, saya ingin memesan untuk dikirim:`,
       '',
       ...orderItems.flatMap(({ product: item, quantity }) => [
         item.name,
@@ -88,19 +93,28 @@ export function OrderModal({ items, product, settings, initialNote = '', onClose
       `Subtotal: ${formatPrice(subtotal)}`,
       '',
       `Nama: ${form.name || '-'}`,
-      `Metode: ${pickup ? 'Ambil di studio' : 'Kirim ke alamat'}`,
-      ...(!pickup ? [`Alamat: ${form.address || '-'}`] : []),
+      ...(pickup
+        ? [
+            'Metode: Ambil di studio',
+            `Lokasi pengambilan: ${settings?.address || `Studio ${storeName}`}`,
+          ]
+        : [
+            'Metode: Kirim ke alamat',
+            `Alamat tujuan: ${form.address || '-'}`,
+          ]),
       ...(form.note.trim() ? [`Ucapan: ${form.note.trim()}`] : []),
       '',
-      'Mohon konfirmasi ketersediaan, ongkir, dan jadwal pengirimannya. Terima kasih!',
+      pickup
+        ? 'Mohon konfirmasi pesanan siap diambil dan waktu pengambilan. Terima kasih!'
+        : 'Mohon konfirmasi ketersediaan, ongkir, dan jadwal pengiriman. Terima kasih!',
     ].join('\n');
-  }, [form, orderItems, subtotal]);
+  }, [form, orderItems, settings, subtotal]);
 
   function updateField(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
-  function submitOrder(event) {
+  async function submitOrder(event) {
     event.preventDefault();
     setError('');
 
@@ -124,7 +138,42 @@ export function OrderModal({ items, product, settings, initialNote = '', onClose
       return;
     }
 
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    setIsSubmitting(true);
+    try {
+      if (user) {
+        const response = await createOrder({
+          customerName: form.name.trim(),
+          deliveryMethod: form.delivery,
+          address: form.delivery === 'delivery' ? form.address.trim() : '',
+          note: form.note.trim(),
+          items: orderItems.map(({ product: item, quantity }) => ({
+            productId: item.id,
+            quantity,
+          })),
+        });
+        const reference = response.data.id.slice(0, 8).toUpperCase();
+        const messageWithReference = message.replace(
+          'Mohon konfirmasi',
+          `No. pesanan akun: ${reference}\n\nMohon konfirmasi`,
+        );
+        openWhatsApp(phone, messageWithReference);
+        return;
+      }
+
+      openWhatsApp(phone, message);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Pesanan tidak dapat disimpan. Silakan coba kembali.',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function openWhatsApp(phone, orderMessage) {
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(orderMessage)}`;
     const opened = window.open(url, '_blank');
     if (opened) opened.opener = null;
     else window.location.assign(url);
@@ -149,7 +198,10 @@ export function OrderModal({ items, product, settings, initialNote = '', onClose
           <div>
             <p>Rangkai pesananmu</p>
             <h2 id="order-title">Sedikit lagi, bungamu siap dipesan.</h2>
-            <span>Lengkapi detail berikut. Florist kami akan mengonfirmasi pesanan melalui WhatsApp.</span>
+            <span>
+              Lengkapi detail berikut. Florist kami akan mengonfirmasi pesanan melalui WhatsApp.
+              {user && ' Pesanan ini juga tersimpan di akun dan menunggu konfirmasi admin.'}
+            </span>
           </div>
           <button type="button" onClick={onClose} aria-label="Tutup">
             <X size={20} />
@@ -235,10 +287,16 @@ export function OrderModal({ items, product, settings, initialNote = '', onClose
             </label>
 
             {error && <p className="order-error" role="alert">{error}</p>}
-            <p className="order-form__privacy">* Wajib diisi. Ongkir dan jadwal pengiriman akan dikonfirmasi oleh florist.</p>
+            <p className="order-form__privacy">
+              * Wajib diisi. {form.delivery === 'pickup'
+                ? 'Waktu pengambilan akan dikonfirmasi oleh florist.'
+                : 'Ongkir dan jadwal pengiriman akan dikonfirmasi oleh florist.'}
+            </p>
             <div className="order-form__actions">
               <button type="button" className="store-button secondary" onClick={onClose}>Batal</button>
-              <button className="store-button" type="submit"><MessageCircle size={16} /> Kirim Pesanan ke WhatsApp</button>
+              <button className="store-button" type="submit" disabled={isSubmitting}>
+                <MessageCircle size={16} /> {isSubmitting ? 'Menyimpan pesanan...' : 'Kirim Pesanan ke WhatsApp'}
+              </button>
             </div>
           </form>
 

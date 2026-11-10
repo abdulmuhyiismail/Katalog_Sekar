@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteCategory,
+  deleteAdmin,
   deleteProduct,
+  fetchOrders,
+  fetchAdmins,
   fetchCategories,
   fetchProducts,
+  fetchStoreSettings,
+  saveAdmin,
   saveCategory,
   saveProduct,
+  saveStoreSettings,
   toggleProductStock,
+  updateOrderStatus,
 } from '../services/api';
-import { AlertTriangle, ArrowRight, Check, Flower2, ImagePlus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ClipboardList, Flower2, ImagePlus, KeyRound, MapPin, MessageCircle, Phone, ShieldCheck, Store, Trash2, Truck, UserRound } from 'lucide-react';
 
 import lambangBunga from '../assets/admin/icons/lambang-bunga.svg';
 import ikon from '../assets/admin/icons/ikon.svg';
 import layers from '../assets/admin/icons/layers.svg';
 import store from '../assets/admin/icons/store.svg';
 import logOut from '../assets/admin/icons/log-out.svg';
-import ikon1 from '../assets/admin/icons/ikon1.svg';
 import plus from '../assets/admin/icons/plus.svg';
 import circleCheck from '../assets/admin/icons/circle-check.svg';
 import packageImg from '../assets/admin/icons/package.svg';
@@ -45,6 +51,13 @@ function formatPrice(price) {
   }).format(Number(price) || 0);
 }
 
+function formatOrderDate(value) {
+  const timestamp = String(value || '');
+  const normalized = timestamp.includes('T') ? timestamp : `${timestamp.replace(' ', 'T')}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString('id-ID');
+}
+
 function getImageSource(image) {
   if (!image) return '';
   if (/^https?:\/\//i.test(image) || image.startsWith('/')) return image;
@@ -55,7 +68,7 @@ function isInStock(product) {
   return Number(product.stock) > 0 && product.stockStatus !== 'Habis';
 }
 
-function AdminEditorDialog({ type, item, categories, saving, error, onSave, onClose }) {
+function AdminEditorDialog({ type, item, categories, storeName, saving, error, onSave, onClose }) {
   const [form, setForm] = useState(() => type === 'product'
     ? {
         name: item?.name || '',
@@ -130,7 +143,7 @@ function AdminEditorDialog({ type, item, categories, saving, error, onSave, onCl
       <section className={`admin-modal${isProduct ? ' admin-modal--product' : ''}`} role="dialog" aria-modal="true" aria-labelledby="admin-editor-title">
         <header className={`admin-modal__header${isProduct ? ' admin-modal__header--product' : ''}`}>
           <div>
-            <p>{isProduct ? 'Katalog Sekar' : item ? 'Perbarui katalog' : 'Katalog Sekar'}</p>
+            <p>{isProduct ? `Katalog ${storeName}` : item ? 'Perbarui katalog' : `Katalog ${storeName}`}</p>
             <h2 id="admin-editor-title">
               {item ? 'Edit' : 'Tambah'} {isProduct ? 'produk bunga' : 'kategori'}
             </h2>
@@ -254,19 +267,195 @@ function AdminEditorDialog({ type, item, categories, saving, error, onSave, onCl
   );
 }
 
+function AdminAccountDialog({ admin, saving, error, onSave, onClose }) {
+  const [form, setForm] = useState(() => ({
+    name: admin?.name || '',
+    email: admin?.email || '',
+    password: '',
+  }));
+
+  function updateField(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    onSave({ ...form, password: form.password || undefined });
+  }
+
+  return (
+    <div className="admin-modal-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving) onClose();
+    }}>
+      <section className="admin-modal admin-account-modal" role="dialog" aria-modal="true" aria-labelledby="admin-account-title">
+        <header className="admin-modal__header">
+          <div>
+            <p>Akses ruang kelola</p>
+            <h2 id="admin-account-title">{admin ? 'Edit admin' : 'Tambah admin'}</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} aria-label="Tutup">
+            <img src={xClose} alt="" width={19} height={19} />
+          </button>
+        </header>
+        <form className="admin-editor-form" onSubmit={submit}>
+          <label className="admin-form-field">
+            <span>Nama lengkap <b>*</b></span>
+            <input name="name" value={form.name} onChange={updateField} required minLength={2} maxLength={80} autoComplete="name" />
+          </label>
+          <label className="admin-form-field">
+            <span>Email <b>*</b></span>
+            <input name="email" type="email" value={form.email} onChange={updateField} required maxLength={254} autoComplete="email" />
+          </label>
+          <label className="admin-form-field">
+            <span>Kata sandi {admin ? '(opsional)' : <b>*</b>}</span>
+            <input
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={updateField}
+              required={!admin}
+              minLength={8}
+              maxLength={72}
+              autoComplete="new-password"
+              placeholder={admin ? 'Kosongkan jika tidak ingin mengganti' : 'Minimal 8 karakter'}
+            />
+            <small>{admin ? 'Biarkan kosong untuk mempertahankan kata sandi saat ini.' : 'Gunakan minimal 8 karakter.'}</small>
+          </label>
+          {error && <p className="admin-form-error" role="alert">{error}</p>}
+          <div className="admin-modal__actions">
+            <button type="button" className="admin-secondary-button" onClick={onClose} disabled={saving}>Batal</button>
+            <button type="submit" className="admin-primary-button" disabled={saving}>
+              {saving ? 'Menyimpan...' : admin ? 'Simpan perubahan' : 'Tambah admin'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AdminSelfSettingsDialog({ admin, mode, saving, error, onSave, onClose }) {
+  const [form, setForm] = useState({
+    name: admin?.name || '',
+    email: admin?.email || '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [validationError, setValidationError] = useState('');
+  const isPasswordMode = mode === 'password';
+
+  function submit(event) {
+    event.preventDefault();
+    setValidationError('');
+    if (isPasswordMode && form.password !== form.confirmPassword) {
+      setValidationError('Konfirmasi kata sandi tidak sama.');
+      return;
+    }
+    onSave(isPasswordMode
+      ? { password: form.password }
+      : { name: form.name, email: form.email });
+  }
+
+  return (
+    <div className="admin-modal-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving) onClose();
+    }}>
+      <section className="admin-modal admin-account-modal" role="dialog" aria-modal="true" aria-labelledby="admin-self-settings-title">
+        <header className="admin-modal__header">
+          <div>
+            <p>Pengaturan akun administrator</p>
+            <h2 id="admin-self-settings-title">{isPasswordMode ? 'Ubah kata sandi' : 'Profil admin'}</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} aria-label="Tutup">
+            <img src={xClose} alt="" width={19} height={19} />
+          </button>
+        </header>
+        <form className="admin-editor-form" onSubmit={submit}>
+          {isPasswordMode ? (
+            <>
+              <label className="admin-form-field">
+                <span>Kata sandi baru <b>*</b></span>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                  required
+                  minLength={8}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  placeholder="Minimal 8 karakter"
+                />
+              </label>
+              <label className="admin-form-field">
+                <span>Konfirmasi kata sandi baru <b>*</b></span>
+                <input
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                  required
+                  minLength={8}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  placeholder="Ulangi kata sandi baru"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="admin-form-field">
+                <span>Nama lengkap <b>*</b></span>
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  autoComplete="name"
+                />
+              </label>
+              <label className="admin-form-field">
+                <span>Email <b>*</b></span>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  required
+                  maxLength={254}
+                  autoComplete="email"
+                />
+              </label>
+            </>
+          )}
+          {(validationError || error) && <p className="admin-form-error" role="alert">{validationError || error}</p>}
+          <div className="admin-modal__actions">
+            <button type="button" className="admin-secondary-button" onClick={onClose} disabled={saving}>Batal</button>
+            <button type="submit" className="admin-primary-button" disabled={saving}>
+              {saving ? 'Menyimpan...' : isPasswordMode ? 'Simpan kata sandi' : 'Simpan profil'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 export function AdminDashboard({
   user, adminUser,
+  settings: publicSettings,
   onExit, onBackToCatalog,
   onLogout,
-  onCatalogChanged, onRefreshData,
+  onCatalogChanged, onRefreshData, onStoreSettingsChanged,
 }) {
   const actualUser = user ?? adminUser;
   const actualOnExit = onExit ?? onBackToCatalog;
   const actualOnCatalogChanged = onCatalogChanged ?? onRefreshData;
+  const [profileOverride, setProfileOverride] = useState(null);
+  const profile = profileOverride?.id === actualUser?.id ? profileOverride : actualUser;
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [productsList, setProducts] = useState([]);
   const [categoriesList, setCategories] = useState([]);
+  const [adminsList, setAdminsList] = useState([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [availabilityFilter, setAvailabilityFilter] = useState('all');
@@ -278,6 +467,24 @@ export function AdminDashboard({
   const [dialogError, setDialogError] = useState('');
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [adminsError, setAdminsError] = useState('');
+  const [ordersList, setOrdersList] = useState([]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
+  const [orderActionId, setOrderActionId] = useState('');
+  const [adminEditor, setAdminEditor] = useState(null);
+  const [adminToDelete, setAdminToDelete] = useState(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [selfSettingsMode, setSelfSettingsMode] = useState('');
+  const [selfSettingsSaving, setSelfSettingsSaving] = useState(false);
+  const [selfSettingsError, setSelfSettingsError] = useState('');
+  const [storeSettings, setStoreSettings] = useState(null);
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [storeSaving, setStoreSaving] = useState(false);
+  const [storeError, setStoreError] = useState('');
+  const storeName = storeSettings?.storeName || publicSettings?.storeName || 'Sekar';
 
   const loadData = useCallback(async () => {
     try {
@@ -295,11 +502,69 @@ export function AdminDashboard({
     }
   }, []);
 
+  const loadStoreSettings = useCallback(async () => {
+    setStoreLoading(true);
+    setStoreError('');
+    try {
+      const response = await fetchStoreSettings();
+      setStoreSettings(response.data);
+    } catch (error) {
+      setStoreError(error instanceof Error ? error.message : 'Pengaturan toko gagal dimuat.');
+    } finally {
+      setStoreLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  const loadAdmins = useCallback(async () => {
+    setAdminsLoading(true);
+    try {
+      const response = await fetchAdmins();
+      setAdminsList(response.data);
+      setAdminsError('');
+    } catch (error) {
+      setAdminsError(error instanceof Error ? error.message : 'Data admin gagal dimuat.');
+    } finally {
+      setAdminsLoading(false);
+    }
+  }, []);
+
+  const loadOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    setOrdersError('');
+    try {
+      const response = await fetchOrders();
+      setOrdersList(response.data);
+    } catch (error) {
+      setOrdersError(error instanceof Error ? error.message : 'Daftar pesanan gagal dimuat.');
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+  async function processOrder(order, status) {
+    setOrderActionId(order.id);
+    setOrdersError('');
+    try {
+      await updateOrderStatus(order.id, status);
+      setNotificationMessage(status === 'confirmed' ? 'Pesanan berhasil dikonfirmasi.' : 'Pesanan ditolak.');
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+      await loadOrders();
+    } catch (error) {
+      setOrdersError(error instanceof Error ? error.message : 'Status pesanan gagal diperbarui.');
+    } finally {
+      setOrderActionId('');
+    }
+  }
+
   const availableCount = productsList.filter(isInStock).length;
+  const filteredOrders = ordersList.filter(
+    (order) => orderStatusFilter === 'all' || order.status === orderStatusFilter,
+  );
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('id-ID');
@@ -327,6 +592,16 @@ export function AdminDashboard({
         .includes(query),
     );
   }, [categoriesList, search]);
+  const filteredAdmins = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('id-ID');
+    if (!query) return adminsList;
+    return adminsList.filter((admin) =>
+      [admin.name, admin.email]
+        .join(' ')
+        .toLocaleLowerCase('id-ID')
+        .includes(query),
+    );
+  }, [adminsList, search]);
   const linkedProductCount = productsList.filter((product) =>
     categoriesList.some((category) => category.id === product.categoryId),
   ).length;
@@ -378,6 +653,100 @@ export function AdminDashboard({
       setDialogError(error instanceof Error ? error.message : 'Item tidak dapat dihapus.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveCurrentAdmin(value) {
+    setSaving(true);
+    setDialogError('');
+    try {
+      const response = await saveAdmin(value, adminEditor?.admin?.id);
+      const savedAdmin = response.data;
+      if (savedAdmin.id === profile?.id) setProfileOverride(savedAdmin);
+      setAdminEditor(null);
+      await loadAdmins();
+      setNotificationMessage(`Admin berhasil ${adminEditor.admin ? 'diperbarui' : 'ditambahkan'}.`);
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : 'Data admin tidak dapat disimpan.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmDeleteAdmin() {
+    if (!adminToDelete) return;
+    setSaving(true);
+    setDialogError('');
+    try {
+      await deleteAdmin(adminToDelete.id);
+      setAdminToDelete(null);
+      await loadAdmins();
+      setNotificationMessage('Admin berhasil dihapus.');
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : 'Admin tidak dapat dihapus.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSelfSettings(values) {
+    if (!profile?.id) return;
+    setSelfSettingsSaving(true);
+    setSelfSettingsError('');
+    try {
+      const response = await saveAdmin({
+        name: values.name ?? profile.name,
+        email: values.email ?? profile.email,
+        ...(values.password ? { password: values.password } : {}),
+      }, profile.id);
+      setProfileOverride(response.data);
+      setSelfSettingsMode('');
+      setNotificationMessage(values.password ? 'Kata sandi admin berhasil diubah.' : 'Profil admin berhasil diperbarui.');
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+    } catch (error) {
+      setSelfSettingsError(error instanceof Error ? error.message : 'Pengaturan akun tidak dapat disimpan.');
+    } finally {
+      setSelfSettingsSaving(false);
+    }
+  }
+
+  async function saveStoreSection(event, section) {
+    event.preventDefault();
+    if (!storeSettings) return;
+
+    const values = section === 'store'
+      ? {
+          storeName: storeSettings.storeName,
+          tagline: storeSettings.tagline,
+          address: storeSettings.address,
+        }
+      : {
+          phone: storeSettings.phone,
+          activeWhatsApp: storeSettings.activeWhatsApp,
+        };
+
+    setStoreSaving(true);
+    setStoreError('');
+    try {
+      const response = await saveStoreSettings(values);
+      setStoreSettings(response.data);
+      onStoreSettingsChanged?.(response.data);
+      setNotificationMessage(
+        section === 'store'
+          ? 'Informasi toko berhasil disimpan.'
+          : 'Pengaturan WhatsApp berhasil disimpan.',
+      );
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 4000);
+    } catch (error) {
+      setStoreError(error instanceof Error ? error.message : 'Pengaturan tidak dapat disimpan.');
+    } finally {
+      setStoreSaving(false);
     }
   }
 
@@ -483,9 +852,9 @@ export function AdminDashboard({
       <aside className="admin-sidebar">
         <div className="admin-sidebar__brand" onClick={actualOnExit} style={{ cursor: 'pointer' }}>
           <img src={lambangBunga} alt="Lambang bunga" width={20} height={29} />
-          <span>sekar.</span>
+          <span>{storeName.toLowerCase()}.</span>
         </div>
-        <p className="admin-sidebar__label">RUANG KELOLA SEKAR</p>
+        <p className="admin-sidebar__label">RUANG KELOLA {storeName.toLocaleUpperCase('id-ID')}</p>
         <nav className="admin-sidebar__nav" aria-label="Menu admin">
           <button type="button" className={activeTab === 'dashboard' ? 'is-active' : ''} onClick={() => setActiveTab('dashboard')}>
             <img src={ikon} alt="Ikon" width={18} height={18} /> Kelola produk
@@ -493,24 +862,48 @@ export function AdminDashboard({
           <button type="button" className={activeTab === 'categories' ? 'is-active' : ''} onClick={() => setActiveTab('categories')}>
             <img src={layers} alt="Layers" width={18} height={18} /> Kelola kategori
           </button>
+          <button type="button" className={activeTab === 'orders' ? 'is-active' : ''} onClick={() => {
+            setActiveTab('orders');
+            loadOrders();
+          }}>
+            <ClipboardList size={18} aria-hidden="true" /> Pesanan
+          </button>
+          <button type="button" className={activeTab === 'admins' ? 'is-active' : ''} onClick={() => {
+            setActiveTab('admins');
+            loadAdmins();
+          }}>
+            <UserRound size={18} aria-hidden="true" /> Kelola admin
+          </button>
+          <button type="button" className={activeTab === 'store' ? 'is-active' : ''} onClick={() => {
+            setActiveTab('store');
+            loadStoreSettings();
+          }}>
+            <Store size={18} aria-hidden="true" /> Kelola toko
+          </button>
+          <button type="button" className={activeTab === 'whatsapp' ? 'is-active' : ''} onClick={() => {
+            setActiveTab('whatsapp');
+            loadStoreSettings();
+          }}>
+            <MessageCircle size={18} aria-hidden="true" /> Kelola WhatsApp
+          </button>
         </nav>
         <div className="admin-sidebar__bottom">
-          <div className="admin-sidebar__help">
-            <img src={store} alt="Store" width={18} height={18} />
-            <div>
-              <p className="admin-sidebar__help-title">Katalog siap menyapa.</p>
-              <p className="admin-sidebar__help-desc">Lihat tampilan bunga yang dilihat pelangganmu.</p>
-              <p className="admin-sidebar__help-link">Lihat katalog ↗</p>
-            </div>
-          </div>
-          <div className="admin-sidebar__profile">
-            <div className="admin-avatar">
-              {(actualUser?.name || 'A').slice(0, 1).toUpperCase()}
-            </div>
-            <div>
-              <strong>{actualUser?.name || 'Admin Sekar'}</strong>
-              <small>Administrator</small>
-            </div>
+          <div className="admin-sidebar__help-card">
+            <button
+              className="admin-sidebar__help admin-sidebar__help--link"
+              type="button"
+              onClick={actualOnExit}
+              aria-label={`Lihat katalog ${storeName}`}
+            >
+              <span className="admin-sidebar__help-icon">
+                <img src={store} alt="" width={18} height={18} />
+              </span>
+              <span className="admin-sidebar__help-copy">
+                <span className="admin-sidebar__help-title">Katalog siap menyapa.</span>
+                <span className="admin-sidebar__help-desc">Lihat tampilan bunga yang dilihat pelangganmu.</span>
+                <span className="admin-sidebar__help-link">Lihat katalog <ArrowRight size={14} aria-hidden="true" /></span>
+              </span>
+            </button>
           </div>
           <button className="admin-sidebar__logout" type="button" onClick={onLogout}>
             <img src={logOut} alt="Log out" width={18} height={18} /> Keluar
@@ -521,32 +914,72 @@ export function AdminDashboard({
       <main className="admin-main">
         <header className="admin-topbar">
           <div className="admin-breadcrumb">
-            <span>Panel admin</span> <span>/</span> <strong>{activeTab === 'categories' ? 'Kelola kategori' : 'Kelola produk'}</strong>
+            <span>Panel admin</span> <span>/</span> <strong>{activeTab === 'categories' ? 'Kelola kategori' : activeTab === 'orders' ? 'Pesanan' : activeTab === 'admins' ? 'Kelola admin' : activeTab === 'store' ? 'Kelola toko' : activeTab === 'whatsapp' ? 'Kelola WhatsApp' : 'Kelola produk'}</strong>
           </div>
           <div className="admin-topbar__right">
-            <div className="admin-sidebar__profile">
-              <div className="admin-avatar">
-                {(actualUser?.name || 'A').slice(0, 1).toUpperCase()}
-              </div>
-              <div>
-                <strong>{actualUser?.name || 'Admin Sekar'}</strong>
-                <small>Administrator</small>
-              </div>
+            <div className="admin-account-menu">
+              <button
+                className="admin-account-menu__trigger"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                aria-label={`Menu akun ${profile?.name || `Admin ${storeName}`}`}
+                onClick={() => setAccountMenuOpen((open) => !open)}
+              >
+                <div className="admin-sidebar__profile">
+                  <div className="admin-avatar">
+                    {(profile?.name || 'A').slice(0, 1).toUpperCase()}
+                  </div>
+                  <div>
+                    <strong>{profile?.name || `Admin ${storeName}`}</strong>
+                    <small>Administrator</small>
+                  </div>
+                </div>
+              </button>
+              {accountMenuOpen && (
+                <div className="admin-account-menu__panel" role="menu" aria-label="Tindakan akun admin">
+                  <button type="button" role="menuitem" onClick={() => {
+                    setSelfSettingsError('');
+                    setSelfSettingsMode('profile');
+                    setAccountMenuOpen(false);
+                  }}>
+                    <UserRound size={16} /> Profil admin
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => {
+                    setSelfSettingsError('');
+                    setSelfSettingsMode('password');
+                    setAccountMenuOpen(false);
+                  }}>
+                    <KeyRound size={16} /> Ubah kata sandi
+                  </button>
+                  <button type="button" role="menuitem" onClick={onLogout}>
+                    <img src={logOut} alt="" width={16} height={16} /> Keluar
+                  </button>
+                </div>
+              )}
             </div>
-            <img src={ikon1} alt="Ikon" width={14} height={14} />
           </div>
         </header>
 
         <div className="admin-content">
           <div className="admin-page-top">
             <div className="admin-page-heading">
-              <p className="admin-eyebrow">RUANG KERJA SEKAR</p>
-              <h1>{activeTab === 'categories' ? 'Kelola kategori' : 'Kelola katalog bunga'}</h1>
-              <p>{activeTab === 'categories' ? 'Bantu pelanggan menemukan bunga yang mereka cari.' : 'Rawat setiap rangkaian, dari harga hingga ketersediaan.'}</p>
+              <p className="admin-eyebrow">RUANG KERJA {storeName.toLocaleUpperCase('id-ID')}</p>
+              <h1>{activeTab === 'categories' ? 'Kelola kategori' : activeTab === 'orders' ? 'Pesanan pelanggan' : activeTab === 'admins' ? 'Kelola admin' : activeTab === 'store' ? 'Kelola toko' : activeTab === 'whatsapp' ? 'Kelola WhatsApp' : 'Kelola katalog bunga'}</h1>
+              <p>{activeTab === 'categories' ? 'Bantu pelanggan menemukan bunga yang mereka cari.' : activeTab === 'orders' ? 'Tinjau dan konfirmasi pesanan yang dikirim dari akun pelanggan.' : activeTab === 'admins' ? `Atur akun yang memiliki akses ke ruang kelola ${storeName}.` : activeTab === 'store' ? 'Atur identitas dan informasi yang ditampilkan di katalog.' : activeTab === 'whatsapp' ? 'Atur nomor kontak dan ketersediaan pesanan melalui WhatsApp.' : 'Rawat setiap rangkaian, dari harga hingga ketersediaan.'}</p>
             </div>
-            <button className="admin-primary-button" type="button" onClick={() => openEditor(activeTab === 'categories' ? 'category' : 'product')}>
-              <img src={plus} alt="" width={18} height={18} /> Tambah {activeTab === 'categories' ? 'Kategori' : 'Produk'}
-            </button>
+            {activeTab === 'admins' ? (
+              <button className="admin-primary-button" type="button" onClick={() => {
+                setDialogError('');
+                setAdminEditor({ admin: null });
+              }}>
+                <img src={plus} alt="" width={18} height={18} /> Tambah Admin
+              </button>
+            ) : activeTab === 'categories' || activeTab === 'dashboard' ? (
+              <button className="admin-primary-button" type="button" onClick={() => openEditor(activeTab === 'categories' ? 'category' : 'product')}>
+                <img src={plus} alt="" width={18} height={18} /> Tambah {activeTab === 'categories' ? 'Kategori' : 'Produk'}
+              </button>
+            ) : null}
           </div>
 
           {pageError && (
@@ -557,7 +990,31 @@ export function AdminDashboard({
           )}
 
           <div className="admin-stat-grid">
-            {activeTab === 'categories' ? (
+            {activeTab === 'orders' ? (
+              <>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Total pesanan</span><ClipboardList size={19} /></div><strong>{ordersList.length}</strong><small>Pesanan akun pelanggan</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Menunggu konfirmasi</span><Check size={19} /></div><strong>{ordersList.filter((order) => order.status === 'pending').length}</strong><small>Perlu ditinjau</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Dikonfirmasi</span><ShieldCheck size={19} /></div><strong>{ordersList.filter((order) => order.status === 'confirmed').length}</strong><small>Siap diproses toko</small></div>
+              </>
+            ) : activeTab === 'store' ? (
+              <>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Nama toko</span><Store size={19} /></div><strong>{storeSettings?.storeName || '—'}</strong><small>Ditampilkan di katalog</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Slogan toko</span><Check size={19} /></div><strong>{storeSettings?.tagline || publicSettings?.tagline ? 'Diatur' : 'Belum diatur'}</strong><small>Identitas toko {storeName}</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Alamat</span><MapPin size={19} /></div><strong>{storeSettings?.address ? 'Diatur' : 'Belum diatur'}</strong><small>Lokasi pada katalog toko</small></div>
+              </>
+            ) : activeTab === 'whatsapp' ? (
+              <>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Status WhatsApp</span><MessageCircle size={19} /></div><strong>{storeSettings?.activeWhatsApp ? 'Aktif' : 'Nonaktif'}</strong><small>Kontak pesanan di katalog</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Nomor kontak</span><Phone size={19} /></div><strong>{storeSettings?.phone || '—'}</strong><small>Nomor tujuan pesanan</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Format kontak</span><ShieldCheck size={19} /></div><strong>WhatsApp</strong><small>Pesanan dikirim langsung ke nomor toko</small></div>
+              </>
+            ) : activeTab === 'admins' ? (
+              <>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Total admin</span><UserRound size={19} /></div><strong>{adminsList.length}</strong><small>Akun dengan akses kelola</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Akun Anda</span><ShieldCheck size={19} /></div><strong>Aktif</strong><small>{profile?.email || 'Administrator'}</small></div>
+                <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Keamanan akun</span><ShieldCheck size={19} /></div><strong>Terjaga</strong><small>Kata sandi tersimpan dengan aman</small></div>
+              </>
+            ) : activeTab === 'categories' ? (
               <>
                 <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Total kategori</span><img src={layers} alt="" width={19} height={19} /></div><strong>{categoriesList.length}</strong><small>Semua kategori terisi</small></div>
                 <div className="admin-stat-card"><div className="admin-stat-card__top"><span>Produk terhubung</span><img src={circleCheck} alt="" width={19} height={19} /></div><strong>{linkedProductCount}</strong><small>Tersebar di {categoriesList.length} kategori</small></div>
@@ -572,7 +1029,275 @@ export function AdminDashboard({
             )}
           </div>
 
-          {activeTab === 'categories' ? (
+          {activeTab === 'orders' ? (
+            <div className="admin-panel">
+              <div className="admin-panel__heading">
+                <div><h2>Daftar pesanan</h2><p>Pesanan akun pelanggan akan tampil di sini setelah checkout melalui WhatsApp.</p></div>
+                <div className="admin-order-controls">
+                  <label className="admin-order-filter">
+                    <span>Filter status</span>
+                    <select
+                      value={orderStatusFilter}
+                      onChange={(event) => setOrderStatusFilter(event.target.value)}
+                      aria-label="Filter pesanan berdasarkan status"
+                    >
+                      <option value="all">Semua status</option>
+                      <option value="pending">Menunggu konfirmasi</option>
+                      <option value="confirmed">Dikonfirmasi</option>
+                      <option value="rejected">Ditolak</option>
+                    </select>
+                  </label>
+                  <button className="admin-secondary-button" type="button" onClick={loadOrders} disabled={ordersLoading}>
+                    {ordersLoading ? 'Memuat...' : 'Muat ulang'}
+                  </button>
+                </div>
+              </div>
+              {ordersError && (
+                <div className="admin-notice admin-notice--error" role="alert">
+                  {ordersError}
+                  <button type="button" onClick={loadOrders}>Coba lagi</button>
+                </div>
+              )}
+              {ordersLoading ? (
+                <div className="admin-empty">Memuat daftar pesanan...</div>
+              ) : ordersList.length ? filteredOrders.length ? (
+                <div className="admin-order-list">
+                  {filteredOrders.map((order) => (
+                    <article className="admin-order-card" key={order.id}>
+                      <header className="admin-order-card__header">
+                        <div>
+                          <strong>Pesanan #{order.id.slice(0, 8).toUpperCase()}</strong>
+                          <small>{formatOrderDate(order.createdAt)}</small>
+                        </div>
+                        <span className={`user-order-status user-order-status--${order.status}`}>
+                          {order.status === 'confirmed' ? 'Dikonfirmasi' : order.status === 'rejected' ? 'Ditolak' : 'Menunggu konfirmasi'}
+                        </span>
+                      </header>
+                      <div className="admin-order-card__customer">
+                        <strong>{order.customerName}</strong>
+                        <a href={`mailto:${encodeURIComponent(order.customerEmail)}`}>{order.customerEmail}</a>
+                      </div>
+                      <p className="admin-order-card__delivery">
+                        {order.deliveryMethod === 'pickup' ? <MapPin size={16} /> : <Truck size={16} />}
+                        {order.deliveryMethod === 'pickup' ? 'Ambil di studio' : 'Kirim ke alamat'}
+                      </p>
+                      {order.address && <p className="admin-order-card__address">{order.address}</p>}
+                      <ul className="admin-order-card__items">
+                        {order.items.map((item) => (
+                          <li key={item.productId}>
+                            <span>{item.name} × {item.quantity}</span>
+                            <strong>{formatPrice(item.lineTotal)}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                      {order.note && <p className="admin-order-card__note"><strong>Catatan:</strong> {order.note}</p>}
+                      <footer className="admin-order-card__footer">
+                        <div><span>Total pesanan</span><strong>{formatPrice(order.subtotal)}</strong></div>
+                        {order.status === 'pending' && (
+                          <div className="admin-order-card__actions">
+                            <button
+                              className="admin-secondary-button"
+                              type="button"
+                              disabled={orderActionId === order.id}
+                              onClick={() => processOrder(order, 'rejected')}
+                            >
+                              Tolak
+                            </button>
+                            <button
+                              className="admin-primary-button"
+                              type="button"
+                              disabled={orderActionId === order.id}
+                              onClick={() => processOrder(order, 'confirmed')}
+                            >
+                              {orderActionId === order.id ? 'Memproses...' : 'Konfirmasi pesanan'}
+                            </button>
+                          </div>
+                        )}
+                      </footer>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="admin-empty">Tidak ada pesanan dengan status yang dipilih.</div>
+              ) : (
+                <div className="admin-empty">Belum ada pesanan dari akun pelanggan.</div>
+              )}
+            </div>
+          ) : activeTab === 'store' ? (
+            <div className="admin-panel">
+              <div className="admin-panel__heading">
+                <div><h2>Informasi toko</h2><p>Informasi ini digunakan pada halaman katalog dan kontak toko.</p></div>
+                <Store size={20} aria-hidden="true" />
+              </div>
+              {storeError && (
+                <div className="admin-notice admin-notice--error" role="alert">
+                  {storeError}
+                  <button type="button" onClick={loadStoreSettings}>Coba lagi</button>
+                </div>
+              )}
+              {storeLoading || !storeSettings ? (
+                <div className="admin-empty">{storeLoading ? 'Memuat pengaturan toko...' : 'Pengaturan toko belum tersedia.'}</div>
+              ) : (
+                <form className="admin-editor-form admin-settings-form" onSubmit={(event) => saveStoreSection(event, 'store')}>
+                  <label className="admin-form-field">
+                    <span>Nama toko <b>*</b></span>
+                    <input
+                      name="storeName"
+                      value={storeSettings.storeName}
+                      onChange={(event) => setStoreSettings((current) => ({ ...current, storeName: event.target.value }))}
+                      required
+                      maxLength={80}
+                      autoComplete="organization"
+                    />
+                    <small>Nama ini akan tampil pada header dan footer katalog.</small>
+                  </label>
+                  <label className="admin-form-field">
+                    <span>Slogan toko</span>
+                    <input
+                      name="tagline"
+                      value={storeSettings.tagline}
+                      onChange={(event) => setStoreSettings((current) => ({ ...current, tagline: event.target.value }))}
+                      maxLength={160}
+                      placeholder="Contoh: Bunga pilihan untuk setiap cerita"
+                    />
+                  </label>
+                  <label className="admin-form-field">
+                    <span>Alamat toko</span>
+                    <textarea
+                      name="address"
+                      value={storeSettings.address}
+                      onChange={(event) => setStoreSettings((current) => ({ ...current, address: event.target.value }))}
+                      maxLength={240}
+                      rows={3}
+                      placeholder="Alamat yang ditampilkan kepada pelanggan"
+                    />
+                    <small>Alamat ini juga digunakan untuk tautan lokasi toko di peta.</small>
+                  </label>
+                  <div className="admin-settings-form__actions">
+                    <button className="admin-primary-button" type="submit" disabled={storeSaving}>
+                      {storeSaving ? 'Menyimpan...' : 'Simpan informasi toko'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          ) : activeTab === 'whatsapp' ? (
+            <div className="admin-panel">
+              <div className="admin-panel__heading">
+                <div><h2>Kontak WhatsApp</h2><p>Atur tujuan pesan konsultasi dan pesanan dari katalog.</p></div>
+                <MessageCircle size={20} aria-hidden="true" />
+              </div>
+              {storeError && (
+                <div className="admin-notice admin-notice--error" role="alert">
+                  {storeError}
+                  <button type="button" onClick={loadStoreSettings}>Coba lagi</button>
+                </div>
+              )}
+              {storeLoading || !storeSettings ? (
+                <div className="admin-empty">{storeLoading ? 'Memuat pengaturan WhatsApp...' : 'Pengaturan WhatsApp belum tersedia.'}</div>
+              ) : (
+                <form className="admin-editor-form admin-settings-form" onSubmit={(event) => saveStoreSection(event, 'whatsapp')}>
+                  <label className="admin-form-field">
+                    <span>Nomor WhatsApp toko</span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      inputMode="tel"
+                      value={storeSettings.phone}
+                      onChange={(event) => setStoreSettings((current) => ({ ...current, phone: event.target.value }))}
+                      maxLength={24}
+                      autoComplete="tel"
+                      placeholder="Contoh: 081234567890"
+                    />
+                    <small>Gunakan nomor aktif, dengan kode negara (62) atau awalan 0. Nomor ini menerima pesan pesanan.</small>
+                  </label>
+                  <div className="admin-settings-whatsapp-status">
+                    <div>
+                      <strong>Terima pesanan melalui WhatsApp</strong>
+                      <small>{storeSettings.activeWhatsApp ? 'Tombol WhatsApp tampil dan dapat digunakan pelanggan.' : 'Tombol WhatsApp dinonaktifkan pada katalog.'}</small>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={storeSettings.activeWhatsApp}
+                      aria-label="Aktifkan pesanan WhatsApp"
+                      className={`admin-stock-toggle${storeSettings.activeWhatsApp ? ' is-on' : ''}`}
+                      onClick={() => setStoreSettings((current) => ({ ...current, activeWhatsApp: !current.activeWhatsApp }))}
+                    />
+                  </div>
+                  <div className="admin-settings-form__actions">
+                    <button className="admin-primary-button" type="submit" disabled={storeSaving}>
+                      {storeSaving ? 'Menyimpan...' : 'Simpan pengaturan WhatsApp'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          ) : activeTab === 'admins' ? (
+            <div className="admin-panel">
+              <div className="admin-panel__heading">
+                <div><h2>Daftar admin</h2><p>Kelola akun yang dapat masuk ke panel admin.</p></div>
+                <div className="admin-search">
+                  <img src={ikon2} alt="" width={16} height={16} />
+                  <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama atau email..." aria-label="Cari admin" />
+                </div>
+              </div>
+              {adminsError && (
+                <div className="admin-notice admin-notice--error" role="alert">
+                  {adminsError}
+                  <button type="button" onClick={loadAdmins}>Coba lagi</button>
+                </div>
+              )}
+              {adminsLoading ? (
+                <div className="admin-empty">Memuat data admin...</div>
+              ) : filteredAdmins.length ? (
+                <div className="admin-table-scroll">
+                  <table className="admin-table admin-account-table">
+                    <thead><tr><th>ADMIN</th><th>EMAIL</th><th>TANGGAL DITAMBAHKAN</th><th>AKSI</th></tr></thead>
+                    <tbody>
+                      {filteredAdmins.map((admin) => {
+                        const isCurrentAdmin = admin.id === profile?.id;
+                        return (
+                          <tr key={admin.id}>
+                            <td>
+                              <div className="admin-account-name">
+                                <span className="admin-avatar">{(admin.name || 'A').slice(0, 1).toUpperCase()}</span>
+                                <span><strong>{admin.name}</strong>{isCurrentAdmin && <small>Akun Anda</small>}</span>
+                              </div>
+                            </td>
+                            <td>{admin.email}</td>
+                            <td>{admin.createdAt ? new Date(admin.createdAt).toLocaleDateString('id-ID') : '—'}</td>
+                            <td>
+                              <div className="admin-row-actions">
+                                <button type="button" title={`Edit ${admin.name}`} aria-label={`Edit ${admin.name}`} onClick={() => {
+                                  setDialogError('');
+                                  setAdminEditor({ admin });
+                                }}><img src={ikon4} alt="" width={16} height={16} /></button>
+                                <button
+                                  type="button"
+                                  title={isCurrentAdmin ? 'Akun yang sedang digunakan tidak dapat dihapus' : adminsList.length === 1 ? 'Minimal satu admin harus dipertahankan' : `Hapus ${admin.name}`}
+                                  aria-label={`Hapus ${admin.name}`}
+                                  disabled={isCurrentAdmin || adminsList.length <= 1}
+                                  onClick={() => {
+                                    setDialogError('');
+                                    setAdminToDelete(admin);
+                                  }}
+                                ><img src={ikon5} alt="" width={16} height={16} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div className="admin-table-footer">Menampilkan {filteredAdmins.length} dari {adminsList.length} admin.</div>
+                </div>
+              ) : (
+                <div className="admin-empty">{adminsList.length ? 'Admin tidak ditemukan.' : 'Belum ada admin.'}</div>
+              )}
+              <p className="admin-category-note"><ShieldCheck size={15} /> Kata sandi admin dienkripsi dan tidak pernah ditampilkan. Akun yang sedang digunakan tidak dapat dihapus.</p>
+            </div>
+          ) : activeTab === 'categories' ? (
             <div className="admin-panel">
               <div className="admin-panel__heading">
                 <div><h2>Semua kategori</h2><p>Kelola kategori yang tampil sebagai filter katalog.</p></div>
@@ -678,7 +1403,7 @@ export function AdminDashboard({
                       })}
                     </tbody>
                   </table>
-                  <div className="admin-table-footer">Menampilkan {filteredProducts.length} produk dalam katalog Sekar.</div>
+                  <div className="admin-table-footer">Menampilkan {filteredProducts.length} produk dalam katalog {storeName}.</div>
                 </div>
               ) : (
                 <div className="admin-empty">{productsList.length ? 'Produk tidak ditemukan.' : 'Belum ada produk.'}</div>
@@ -686,7 +1411,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          <p className="admin-content__footnote">Katalog Sekar diperbarui otomatis saat Anda menyimpan perubahan.</p>
+          <p className="admin-content__footnote">Katalog {storeName} diperbarui otomatis saat Anda menyimpan perubahan.</p>
         </div>
       </main>
 
@@ -696,6 +1421,7 @@ export function AdminDashboard({
           type={editor.type}
           item={editor.item}
           categories={categoriesList}
+          storeName={storeName}
           saving={saving}
           error={dialogError}
           onSave={saveCurrentEditor}
@@ -706,6 +1432,73 @@ export function AdminDashboard({
             }
           }}
         />
+      )}
+
+      {adminEditor && (
+        <AdminAccountDialog
+          key={adminEditor.admin?.id || 'new-admin'}
+          admin={adminEditor.admin}
+          saving={saving}
+          error={dialogError}
+          onSave={saveCurrentAdmin}
+          onClose={() => {
+            if (!saving) {
+              setAdminEditor(null);
+              setDialogError('');
+            }
+          }}
+        />
+      )}
+
+      {selfSettingsMode && (
+        <AdminSelfSettingsDialog
+          key={selfSettingsMode}
+          admin={profile}
+          mode={selfSettingsMode}
+          saving={selfSettingsSaving}
+          error={selfSettingsError}
+          onSave={saveSelfSettings}
+          onClose={() => {
+            if (!selfSettingsSaving) {
+              setSelfSettingsMode('');
+              setSelfSettingsError('');
+            }
+          }}
+        />
+      )}
+
+      {adminToDelete && (
+        <div className="admin-modal-overlay" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !saving) {
+            setAdminToDelete(null);
+            setDialogError('');
+          }
+        }}>
+          <section className="admin-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="admin-delete-account-title">
+            <header className="admin-modal__header">
+              <div>
+                <p>Pengelolaan akses</p>
+                <h2 id="admin-delete-account-title">Hapus admin ini?</h2>
+              </div>
+              <button type="button" onClick={() => setAdminToDelete(null)} disabled={saving} aria-label="Tutup">
+                <img src={xClose} alt="" width={19} height={19} />
+              </button>
+            </header>
+            <p className="admin-confirm-modal__text">
+              Akun <strong>{adminToDelete.name}</strong> ({adminToDelete.email}) akan dihapus dan tidak dapat digunakan untuk masuk kembali.
+            </p>
+            {dialogError && <p className="admin-form-error" role="alert">{dialogError}</p>}
+            <div className="admin-modal__actions">
+              <button type="button" className="admin-secondary-button" onClick={() => {
+                setAdminToDelete(null);
+                setDialogError('');
+              }} disabled={saving}>Batal</button>
+              <button type="button" className="admin-danger-button" onClick={confirmDeleteAdmin} disabled={saving}>
+                {saving ? 'Menghapus...' : 'Hapus Admin'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       {pendingDelete && (

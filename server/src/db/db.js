@@ -103,6 +103,24 @@ class SqliteDatabase {
       );
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        customer_name TEXT NOT NULL,
+        delivery_method TEXT NOT NULL CHECK (delivery_method IN ('delivery', 'pickup')),
+        address TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        items_json TEXT NOT NULL,
+        subtotal INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_orders_user_created ON orders(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at DESC);
+    `);
+
     // Indexes
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_products_cat ON products(category_id);
@@ -248,10 +266,56 @@ class SqliteDatabase {
   }
 
   // --- Admin SQL Operations ---
-  getAdmin() {
+  getAdminByEmail(email) {
     return this.db
-      .prepare("SELECT id, name, email, password FROM admins LIMIT 1")
-      .get();
+      .prepare(
+        "SELECT id, name, email, password FROM admins WHERE LOWER(email) = ?",
+      )
+      .get(email);
+  }
+
+  getAdminById(id) {
+    return this.db
+      .prepare(
+        "SELECT id, name, email, created_at AS createdAt FROM admins WHERE id = ?",
+      )
+      .get(id);
+  }
+
+  getAdmins() {
+    return this.db
+      .prepare(
+        "SELECT id, name, email, created_at AS createdAt FROM admins ORDER BY created_at ASC, name COLLATE NOCASE ASC",
+      )
+      .all();
+  }
+
+  getAdminCount() {
+    return this.db.prepare("SELECT COUNT(*) AS count FROM admins").get().count;
+  }
+
+  addAdmin({ name, email, password }) {
+    const id = randomUUID();
+    this.db
+      .prepare(
+        "INSERT INTO admins (id, name, email, password) VALUES (?, ?, ?, ?)",
+      )
+      .run(id, name, email, password);
+    return this.getAdminById(id);
+  }
+
+  updateAdmin(id, { name, email, password }) {
+    const result = this.db
+      .prepare(
+        "UPDATE admins SET name = ?, email = ?, password = COALESCE(?, password) WHERE id = ?",
+      )
+      .run(name, email, password ?? null, id);
+    return result.changes > 0 ? this.getAdminById(id) : null;
+  }
+
+  deleteAdmin(id) {
+    const result = this.db.prepare("DELETE FROM admins WHERE id = ?").run(id);
+    return result.changes > 0;
   }
 
   getUserForAuthentication(email) {
@@ -276,6 +340,77 @@ class SqliteDatabase {
       )
       .run(id, name, email, password);
     return this.getUserById(id);
+  }
+
+  createOrder({ userId, customerName, deliveryMethod, address, note, items, subtotal }) {
+    const id = randomUUID();
+    this.db
+      .prepare(`
+        INSERT INTO orders (
+          id, user_id, customer_name, delivery_method, address, note, items_json, subtotal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        id,
+        userId,
+        customerName,
+        deliveryMethod,
+        address,
+        note,
+        JSON.stringify(items),
+        subtotal,
+      );
+    return this.getOrderById(id);
+  }
+
+  getOrderById(id) {
+    const order = this.db.prepare(`
+      SELECT
+        o.id, o.user_id AS userId, o.customer_name AS customerName,
+        u.email AS customerEmail, o.delivery_method AS deliveryMethod,
+        o.address, o.note, o.items_json AS itemsJson, o.subtotal, o.status,
+        o.created_at AS createdAt, o.updated_at AS updatedAt
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      WHERE o.id = ?
+    `).get(id);
+    return order ? { ...order, items: JSON.parse(order.itemsJson) } : null;
+  }
+
+  getOrdersByUser(userId) {
+    return this.db.prepare(`
+      SELECT
+        o.id, o.user_id AS userId, o.customer_name AS customerName,
+        u.email AS customerEmail, o.delivery_method AS deliveryMethod,
+        o.address, o.note, o.items_json AS itemsJson, o.subtotal, o.status,
+        o.created_at AS createdAt, o.updated_at AS updatedAt
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      WHERE o.user_id = ?
+      ORDER BY o.created_at DESC, o.id DESC
+    `).all(userId).map((order) => ({ ...order, items: JSON.parse(order.itemsJson) }));
+  }
+
+  getOrders() {
+    return this.db.prepare(`
+      SELECT
+        o.id, o.user_id AS userId, o.customer_name AS customerName,
+        u.email AS customerEmail, o.delivery_method AS deliveryMethod,
+        o.address, o.note, o.items_json AS itemsJson, o.subtotal, o.status,
+        o.created_at AS createdAt, o.updated_at AS updatedAt
+      FROM orders o
+      JOIN users u ON u.id = o.user_id
+      ORDER BY o.created_at DESC, o.id DESC
+    `).all().map((order) => ({ ...order, items: JSON.parse(order.itemsJson) }));
+  }
+
+  updateOrderStatus(id, status) {
+    const result = this.db.prepare(`
+      UPDATE orders
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'pending'
+    `).run(status, id);
+    return result.changes ? this.getOrderById(id) : null;
   }
 
   // --- Category SQL Operations ---

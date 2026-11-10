@@ -10,12 +10,14 @@ import {
 import { loginAdmin } from '../services/api';
 import lambangBunga from '../assets/admin/icons/lambang-bunga.svg';
 
-export function AdminLoginModal({ onBack, onLogin }) {
+export function AdminLoginModal({ settings, onBack, onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const storeName = settings?.storeName || 'Sekar';
+  const storeTagline = settings?.tagline || 'Bunga untuk setiap rasa';
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -44,14 +46,14 @@ export function AdminLoginModal({ onBack, onLogin }) {
         </button>
         <a className="admin-login__brand" href="#beranda" onClick={onBack}>
           <img src={lambangBunga} alt="" width={20} height={29} />
-          <span>sekar.</span>
+          <span>{storeName.toLowerCase()}.</span>
         </a>
       </header>
 
       <section className="admin-login__content">
         <div className="admin-login__card">
           <h1>Masuk ke Dashboard</h1>
-          <p className="admin-login__subtitle">Gunakan akun administrator untuk melanjutkan.</p>
+          <p className="admin-login__subtitle">{storeTagline} · Gunakan akun administrator untuk melanjutkan.</p>
 
           <form onSubmit={handleSubmit} className="admin-login__form">
             <label>
@@ -105,7 +107,7 @@ export function AdminLoginModal({ onBack, onLogin }) {
         </div>
       </section>
 
-      <footer className="admin-login__footer">© 2026 Sekar Florist</footer>
+      <footer className="admin-login__footer">© 2026 {storeName}</footer>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { db } from "../db/db.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key"; // Use a default
 
@@ -39,7 +40,15 @@ function requireRole(role) {
 
 export const authenticateAdmin = (req, res, next) =>
   authenticateToken(req, res, () =>
-    requireRole("admin")(req, res, next),
+    requireRole("admin")(req, res, () => {
+      if (!db.getAdminById(req.user.sub)) {
+        return res.status(401).json({
+          success: false,
+          message: "Sesi administrator tidak lagi berlaku. Silakan masuk kembali.",
+        });
+      }
+      next();
+    }),
   );
 
 export const authenticateUser = (req, res, next) =>
